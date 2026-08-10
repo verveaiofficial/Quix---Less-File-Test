@@ -1,6 +1,6 @@
 ## Global Knowledge
 
-About You :
+# About You :
 
 You are Quix AI.
 
