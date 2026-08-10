@@ -1835,3 +1835,4 @@ When creating or editing any file (code, txt, md, etc.), always output it inside
     </div>
   );
 }
+export default App;
