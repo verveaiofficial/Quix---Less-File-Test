@@ -1,12 +1,12 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import {
-  MODELS, CHAT_MODELS, LIMITS, IMAGINE_URL, DEEPTHINK_URL, APP_VERSION, THINK_MAX_MS,
+  MODELS, CHAT_MODELS, LIMITS, IMAGINE_URL, DEEPTHINK_URL, APP_VERSION, THINK_SEP,
   rid, ChatMessage, SourceItem, AttachmentMeta,
   useAuthStore, useUIStore, useChatStore, useProfileStore, useMemoryStore, useUsageStore,
   supabase, createChat, insertMessage, fetchChats, fetchMessages, renameChat, deleteChat,
   askGeminiStream, abortGemini, buildPrompt, runDailyMemorySync, useStreamText, copyText,
-  saveLocalMessages, clearLocalMessages, stripObs, extractObs, saveObservation,
+  stripObs, extractObs, saveObservation,
 } from "./core";
 import { CanvasPanel, FileCard, InlineCodeBlock, useCanvasStore, extractFiles } from "./canvas";
 
@@ -14,11 +14,6 @@ const CHAIN: Record<string, string[]> = {
   flash: ["flash", "lite"], lite: ["lite", "flash"], thinking: ["thinking", "flash", "lite"],
   deepthink: ["deepthink", "flash", "lite"], coder: ["coder", "flash", "lite"],
 };
-
-/* ================= LOCAL CHAT HISTORY (guests) ================= */
-const LOCAL_CHATS_KEY = "quix_local_chats";
-function loadLocalChats(): any[] { try { const a = JSON.parse(localStorage.getItem(LOCAL_CHATS_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } }
-function pushLocalChat(chat: any) { try { const a = loadLocalChats(); a.unshift(chat); localStorage.setItem(LOCAL_CHATS_KEY, JSON.stringify(a.slice(0, 20))); } catch {} }
 
 /* ================= SMALL STORES ================= */
 const PIN_KEY = "quix_pinned_v1";
@@ -30,17 +25,6 @@ const useImagineStore = create<any>((set) => ({ nonce: 0, bump: () => set((s: an
 
 function shimmer(e: any) { const el = e.currentTarget as HTMLElement; el.classList.remove("shimmer"); void el.offsetWidth; el.classList.add("shimmer"); setTimeout(() => el.classList.remove("shimmer"), 500); }
 function shimmerThen(e: any, fn: () => void) { shimmer(e); setTimeout(fn, 450); }
-
-function usePacedLines(full: string, active: boolean, linesPerSec = 2): string {
-  const totalLines = useMemo(() => full.split("\n").length, [full]);
-  const [shownLines, setShownLines] = useState(active ? 0 : Infinity);
-  useEffect(() => {
-    if (!active) { setShownLines(Infinity); return; }
-    const id = setInterval(() => setShownLines((n) => Math.min(totalLines, n + linesPerSec)), 1000);
-    return () => clearInterval(id);
-  }, [active, totalLines, linesPerSec]);
-  return full.split("\n").slice(0, shownLines).join("\n");
-}
 
 /* ================= GLOBAL CSS ================= */
 const globalCSS = `
@@ -237,7 +221,6 @@ function AiMessage({ message, mid }: { message: ChatMessage; mid: string }) {
   const shown = useStreamText(message.content, shouldStream, 10);
   const isDone = message.status === "done" || message.status === "error";
   const isThinkingModel = message.model === "thinking" || message.model === "deepthink";
-  const pacedThoughts = usePacedLines(message.thoughts || "", message.status === "thinking", 2);
 
   useEffect(() => {
     if (message.status !== "streaming") return;
@@ -270,7 +253,7 @@ function AiMessage({ message, mid }: { message: ChatMessage; mid: string }) {
     <div className="message-ai" data-mid={mid}>
       <style>{amCSS}</style>
       <div className="ai-content">
-        {isThinkingModel ? (<ThinkingStatus done={message.status !== "thinking"} sources={message.sources} thoughts={pacedThoughts} />) : (<BubbleIndicator dimmed={isDone} />)}
+        {isThinkingModel ? (<ThinkingStatus done={message.status !== "thinking"} sources={message.sources} thoughts={message.thoughts} />) : (<BubbleIndicator dimmed={isDone} />)}
         <div style={{ width: "100%", maxWidth: 640 }}>
           {shouldStream && <MarkdownText text={shown} mid={mid} canvas={canvasOn} />}
           {message.status === "done" && <MarkdownText text={message.content} mid={mid} canvas={canvasOn} />}
@@ -582,10 +565,10 @@ function ChatHeader() {
       </div>
       <div id="chat-options-menu" className={optOpen ? "show" : ""}>
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); openFilesList(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Files in this chat</div>
-        <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); archiveCurrent(); resetChat(); clearLocalMessages(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>New chat</div>
+        <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); resetChat(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>New chat</div>
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); if (currentChatId) togglePin(currentChatId); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 17v5" /><path d="M9 3h6l1 7 2 2H6l2-2z" /></svg>{isPinned ? "Unpin chat" : "Pin chat"}</div>
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); setRenameVal(chatTitle); setRenameOpen(true); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>Rename chat</div>
-        <div className="chat-opt danger shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); if (session && currentChatId) deleteChat(currentChatId); resetChat(); clearLocalMessages(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>Delete chat</div>
+        <div className="chat-opt danger shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); if (session && currentChatId) deleteChat(currentChatId); resetChat(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>Delete chat</div>
       </div>
       <div id="rename-modal" className={renameOpen ? "show" : ""} onClick={() => setRenameOpen(false)}>
         <div className="rename-box" onClick={(e) => e.stopPropagation()}>
@@ -601,7 +584,7 @@ function ChatHeader() {
   );
 }
 
-/* ================= DRAWER ================= */
+/* ================= DRAWER (Supabase history only) ================= */
 const dwCSS = `
 #overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); backdrop-filter: blur(4px); z-index: 40; opacity: 0; pointer-events: none; transition: opacity .35s ease; }
 #overlay.open { opacity: 1; pointer-events: all; }
@@ -649,12 +632,10 @@ function MenuDrawer() {
   const { session, signOut } = useAuthStore();
   const pinned = usePinStore((s) => s.pinned);
   const [chats, setChats] = useState<any[]>([]);
-  const [localChats, setLocalChats] = useState<any[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
-  useEffect(() => { if (drawerOpen && session) fetchChats().then(setChats); if (drawerOpen && !session) setLocalChats(loadLocalChats()); }, [drawerOpen, session]);
-  const source = session ? chats : localChats;
-  const filtered = query.trim() ? source.filter((c) => c.title?.toLowerCase().includes(query.trim().toLowerCase())) : source;
+  useEffect(() => { if (drawerOpen && session) fetchChats().then(setChats); }, [drawerOpen, session]);
+  const filtered = query.trim() ? chats.filter((c) => c.title?.toLowerCase().includes(query.trim().toLowerCase())) : chats;
   const sorted = [...filtered].sort((a, b) => (pinned.includes(b.id) ? 1 : 0) - (pinned.includes(a.id) ? 1 : 0));
   return (
     <>
@@ -670,7 +651,7 @@ function MenuDrawer() {
           </div>
           <div className="drawer-scroll">
             <div className="hist-label">Recent</div>
-            {sorted.length > 0 ? (<div>{sorted.map((c) => (<div className={`hist-item ${c.id === currentChatId ? "current" : ""}`} key={c.id} onClick={async () => { if (session) { const msgs = await fetchMessages(c.id); loadMessages(msgs); setCurrentChat(c.id, c.title); } else { loadMessages(c.messages || []); setCurrentChat(c.id, c.title); } setDrawerOpen(false); }}><div className="hist-main"><div className="hist-title">{c.title}</div><div className="hist-time">{c.updated_at ? timeAgo(c.updated_at) : (c.savedAt ? timeAgo(c.savedAt) : "")}</div></div>{pinned.includes(c.id) && (<span className="hist-pin"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 17v5" /><path d="M9 3h6l1 7 2 2H6l2-2z" /></svg></span>)}</div>))}</div>) : (<div className="hist-empty">{query ? "No chats match your search." : "No chats yet. Your conversations will appear here once you start talking."}</div>)}
+            {session ? (sorted.length > 0 ? (<div>{sorted.map((c) => (<div className={`hist-item ${c.id === currentChatId ? "current" : ""}`} key={c.id} onClick={async () => { const msgs = await fetchMessages(c.id); loadMessages(msgs); setCurrentChat(c.id, c.title); setDrawerOpen(false); }}><div className="hist-main"><div className="hist-title">{c.title}</div><div className="hist-time">{c.updated_at ? timeAgo(c.updated_at) : ""}</div></div>{pinned.includes(c.id) && (<span className="hist-pin"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 17v5" /><path d="M9 3h6l1 7 2 2H6l2-2z" /></svg></span>)}</div>))}</div>) : (<div className="hist-empty">{query ? "No chats match your search." : "No chats yet. Your conversations will appear here once you start talking."}</div>)) : (<div className="hist-empty">Sign in to save your chats.</div>)}
           </div>
           <div className="drawer-footer">
             {session ? (<div className="user-row"><span className="user-email">{session.user.email || "Signed in"}</span><button className="signout-btn" onClick={(e) => shimmerThen(e, async () => { await signOut(); resetChat(); })}>Sign out</button></div>) : (
@@ -793,6 +774,7 @@ function SettingsPage() {
   const { resetChat } = useChatStore();
   const { memories, loadFor, addMemory, removeMemory } = useMemoryStore();
   const usage = useUsageStore((s) => s.usage);
+  const limitFor = useUsageStore((s) => s.limitFor);
   const fileRef = useRef<HTMLInputElement>(null);
   const [memInput, setMemInput] = useState("");
   const uid = session?.user?.id ?? null;
@@ -822,7 +804,7 @@ function SettingsPage() {
           </div>
           <div className="set-section">
             <div className="set-label">Daily message limits</div>
-            {CHAT_MODELS.map((m) => { const lim = LIMITS[m]; const rem = Math.max(0, lim - (usage[m] ?? 0)); return (<div className="limit-row" key={m}><div className="limit-top"><span>{MODELS[m].name}</span><span>{rem}/{lim} left</span></div><div className="limit-bar"><div className="limit-fill" style={{ width: `${(rem / lim) * 100}%` }} /></div></div>); })}
+            {CHAT_MODELS.map((m) => { const lim = limitFor(m); const rem = Math.max(0, lim - (usage[m] ?? 0)); return (<div className="limit-row" key={m}><div className="limit-top"><span>{MODELS[m].name}</span><span>{lim === 0 ? "Sign in required" : `${rem}/${lim} left`}</span></div><div className="limit-bar"><div className="limit-fill" style={{ width: lim === 0 ? 0 : `${(rem / lim) * 100}%` }} /></div></div>); })}
             <div className="mem-empty">Limits reset at midnight UTC.</div>
           </div>
           {uid && (
@@ -832,7 +814,7 @@ function SettingsPage() {
                 <input className="set-field" type="text" placeholder="Teach Quix something about you..." value={memInput} onChange={(e) => setMemInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && memInput.trim()) { addMemory(uid, memInput); setMemInput(""); } }} />
                 <button className="mem-add" onClick={() => { if (memInput.trim()) { addMemory(uid, memInput); setMemInput(""); } }}>+</button>
               </div>
-              {memories.length > 0 ? (memories.map((m: any) => (<div className="mem-item" key={m.id}><span>{m.text}</span><button onClick={() => removeMemory(uid, m.id)}>×</button></div>))) : (<div className="mem-empty">No memories yet. Quix also writes automatic memories from your chats every day at midnight UTC.</div>)}
+              {memories.length > 0 ? (memories.map((m: any) => (<div className="mem-item" key={m.id}><span>{m.text}</span><button onClick={() => removeMemory(uid, m.id)}>×</button></div>))) : (<div className="mem-empty">No memories yet. Quix also writes automatic memories from your last 24h of chats at every midnight UTC.</div>)}
             </div>
           )}
           <div className="set-section">
@@ -915,15 +897,6 @@ const layerCSS = `
 .qx-layer iframe { width: 100%; height: 100%; border: none; display: block; background: #000; }
 `;
 
-function archiveCurrent() {
-  const st = useChatStore.getState();
-  const sess = useAuthStore.getState().session;
-  const msgs = st.messages;
-  if (!msgs.length) return;
-  if (sess?.user?.id) return; // logged-in: already saved incrementally to Supabase
-  pushLocalChat({ id: st.currentChatId || rid(), title: st.chatTitle || "New Chat", messages: msgs, savedAt: new Date().toISOString() });
-}
-
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [dtRunning, setDtRunning] = useState(false);
@@ -939,7 +912,6 @@ export default function App() {
   useEffect(() => { const t = setTimeout(() => setLoading(false), 7000); return () => clearTimeout(t); }, []);
   useEffect(() => { (document.documentElement.style as any).zoom = String(fontScale); }, [fontScale]);
   useEffect(() => { if (session?.user?.id) runDailyMemorySync(); }, [session]);
-  useEffect(() => { if (messages.length) saveLocalMessages(messages); }, [messages]);
 
   useEffect(() => {
     const h = (e: MessageEvent) => { if (e.origin !== "https://quix-deepthink.lovable.app") return; const d = e.data || {}; if (d.type === "deepthink:started") setDtRunning(true); if (d.type === "deepthink:complete" || d.type === "deepthink:stopped") setDtRunning(false); if (d.type === "deepthink:ready") setDtRunning(!!d.running); };
@@ -948,20 +920,28 @@ export default function App() {
   }, []);
 
   const postToDeepThink = (msg: any) => { const cw = dtFrameRef.current?.contentWindow; if (cw) cw.postMessage(msg, DEEPTHINK_URL); };
-  const handleDeepThinkSend = (text: string) => { const usage = useUsageStore.getState(); const rem = usage.remaining("deepthink"); if (rem <= 0) { const fallback = usage.resolve("deepthink"); if (fallback) setActiveModel(fallback); return; } usage.consume("deepthink"); postToDeepThink({ type: "deepthink:ask", question: text }); };
+  const handleDeepThinkSend = (text: string) => { const usage = useUsageStore.getState(); const rem = usage.remaining("deepthink"); if (rem <= 0) { const fallback = usage.resolve("deepthink"); if (fallback) setActiveModel(fallback); else useUIStore.getState().openAuth(); return; } usage.consume("deepthink"); postToDeepThink({ type: "deepthink:ask", question: text }); };
   const handleDeepThinkStop = () => { postToDeepThink({ type: "deepthink:stop" }); };
 
   const handleSend = async (text: string, attachments: PendingAttachment[]) => {
     if (useChatStore.getState().isSending) return;
     const usage = useUsageStore.getState();
+    const sessNow = useAuthStore.getState().session;
     const startModel = usage.resolve(activeModel);
-    const userMessage: ChatMessage = { id: rid(), role: "user", model: startModel || activeModel, content: text, createdAt: Date.now(), status: "done", attachments: attachments.map((a) => ({ name: a.name, kind: a.kind, previewUrl: a.previewUrl })) };
+
+    // blocked (guest with no remaining / non-thinking guest) -> sign-in wall
+    if (!startModel) {
+      addMessage({ id: rid(), role: "user", model: activeModel, content: text, createdAt: Date.now(), status: "done" });
+      addMessage({ id: rid(), role: "ai", model: activeModel, content: sessNow ? "Daily limit reached for all models. Limits reset at midnight UTC." : "You've used your free Thinking messages. Sign in to keep talking — and unlock every model.", createdAt: Date.now(), status: "error" });
+      if (!sessNow) useUIStore.getState().openAuth();
+      return;
+    }
+
+    const userMessage: ChatMessage = { id: rid(), role: "user", model: startModel, content: text, createdAt: Date.now(), status: "done", attachments: attachments.map((a) => ({ name: a.name, kind: a.kind, previewUrl: a.previewUrl })) };
     const aiId = rid();
-    if (!startModel) { addMessage(userMessage); addMessage({ id: aiId, role: "ai", model: activeModel, content: "Daily limit reached for all models. Limits reset at midnight UTC.", createdAt: Date.now(), status: "error" }); return; }
     if (startModel !== activeModel) setActiveModel(startModel);
-    const sessionNow = useAuthStore.getState().session;
     let chatId = useChatStore.getState().currentChatId;
-    if (sessionNow) { if (!chatId) { const title = text.slice(0, 40) || "New Chat"; chatId = await createChat(title); if (chatId) useChatStore.getState().setCurrentChat(chatId, title); } if (chatId) insertMessage(chatId, userMessage); }
+    if (sessNow) { if (!chatId) { const title = text.slice(0, 40) || "New Chat"; chatId = await createChat(title); if (chatId) useChatStore.getState().setCurrentChat(chatId, title); } if (chatId) insertMessage(chatId, userMessage); }
     addMessage(userMessage);
     addMessage({ id: aiId, role: "ai", model: startModel, content: "", thoughts: "", createdAt: Date.now(), status: "thinking" });
     setIsSending(true);
@@ -977,23 +957,31 @@ export default function App() {
       updateMessage(aiId, { model: m, status: "thinking", content: "", thoughts: "" });
       const history = useChatStore.getState().messages.filter((x) => x.id !== aiId && x.content.trim() !== "");
       let prompt = buildPrompt(m, text, history);
+      if (isThinkM) prompt += `\n\n--- Thinking protocol (mandatory) ---\nThink out loud as short bullet lines, each starting with "• ". Stream these reasoning lines naturally, one after another.\nCover multiple angles: what the user really wants, edge cases, and your plan.\nWhen your reasoning is genuinely complete, write a line containing exactly "${THINK_SEP}", then give the final answer in clean markdown.`;
       if (isCoderM) prompt += `\n\n--- Coder protocol ---\nAlways write a brief friendly intro sentence FIRST, before any code block, explaining what you're about to build. Then output the code.`;
       if (useCanvasStore.getState().on) prompt += `\n\n--- Canvas mode ---\nWhen creating or editing any file (code, txt, md, etc.), always output it inside a fenced code block tagged with its language so it appears in the user's Canvas as a file card with preview and download.`;
-      let gotText = false;
-      // nativeThoughts cleanly separates reasoning (thoughts) from the answer (text) — no fragile separator parsing
-      askGeminiStream(m, prompt, { search: isThinkM, nativeThoughts: isThinkM, attachments }, {
-        onThoughts: (t) => { if (isThinkM) updateMessage(aiId, { thoughts: t }); },
+
+      askGeminiStream(m, prompt, { search: isThinkM, nativeThoughts: false, attachments }, {
+        onThoughts: () => {},
         onText: (t) => {
-          if (!gotText) { gotText = true; updateMessage(aiId, { content: stripObs(t), status: "streaming" }); }
-          else updateMessage(aiId, { content: stripObs(t) });
+          // live-parse: everything before separator streams as reasoning, after as the answer
+          const idx = t.indexOf(THINK_SEP);
+          if (idx > -1) {
+            updateMessage(aiId, { thoughts: t.slice(0, idx), content: stripObs(t.slice(idx + THINK_SEP.length).replace(/^\n+/, "")), status: "streaming" });
+          } else {
+            updateMessage(aiId, { thoughts: t, status: "thinking" });
+          }
         },
         onDone: (r) => {
           const raw = r.text || "";
-          const obs = extractObs(raw);
-          if (obs) saveObservation(obs);
-          const clean = stripObs(raw);
-          if (clean) {
-            updateMessage(aiId, { content: clean, thoughts: r.thoughts, sources: r.sources, status: "streaming", doneStreaming: true });
+          const obs = extractObs(raw) || `User asked: "${text.slice(0, 140)}"`;
+          saveObservation(obs);
+          const full = stripObs(raw);
+          const idx = full.indexOf(THINK_SEP);
+          if (idx > -1) {
+            updateMessage(aiId, { thoughts: full.slice(0, idx), content: full.slice(idx + THINK_SEP.length).replace(/^\n+/, "") || "Done.", sources: r.sources, status: "streaming", doneStreaming: true });
+          } else if (full) {
+            updateMessage(aiId, { content: full, sources: r.sources, status: "streaming", doneStreaming: true });
           } else {
             attempt(i + 1);
           }
