@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { create } from "zustand";
 import {
   MODELS, CHAT_MODELS, LIMITS, IMAGINE_URL, DEEPTHINK_URL, APP_VERSION, THINK_SEP, THINK_MAX_MS,
@@ -6,6 +6,7 @@ import {
   useAuthStore, useUIStore, useChatStore, useProfileStore, useMemoryStore, useUsageStore,
   supabase, createChat, insertMessage, fetchChats, fetchMessages, renameChat, deleteChat,
   askGeminiStream, abortGemini, buildPrompt, runDailyMemorySync, useStreamText, copyText,
+  saveLocalMessages, loadLocalMessages, clearLocalMessages, stripObs, extractObs, saveObservation,
 } from "./core";
 import { CanvasPanel, FileCard, InlineCodeBlock, useCanvasStore, extractFiles } from "./canvas";
 
@@ -24,6 +25,18 @@ const useImagineStore = create<any>((set) => ({ nonce: 0, bump: () => set((s: an
 
 function shimmer(e: any) { const el = e.currentTarget as HTMLElement; el.classList.remove("shimmer"); void el.offsetWidth; el.classList.add("shimmer"); setTimeout(() => el.classList.remove("shimmer"), 500); }
 function shimmerThen(e: any, fn: () => void) { shimmer(e); setTimeout(fn, 450); }
+
+/* reveals reasoning line-by-line at N lines/sec (slower than answer stream) */
+function usePacedLines(full: string, active: boolean, linesPerSec = 2): string {
+  const totalLines = useMemo(() => full.split("\n").length, [full]);
+  const [shownLines, setShownLines] = useState(active ? 0 : Infinity);
+  useEffect(() => {
+    if (!active) { setShownLines(Infinity); return; }
+    const id = setInterval(() => setShownLines((n) => Math.min(totalLines, n + linesPerSec)), 1000);
+    return () => clearInterval(id);
+  }, [active, totalLines, linesPerSec]);
+  return full.split("\n").slice(0, shownLines).join("\n");
+}
 
 /* ================= GLOBAL CSS ================= */
 const globalCSS = `
@@ -220,6 +233,7 @@ function AiMessage({ message, mid }: { message: ChatMessage; mid: string }) {
   const shown = useStreamText(message.content, shouldStream, 10);
   const isDone = message.status === "done" || message.status === "error";
   const isThinkingModel = message.model === "thinking" || message.model === "deepthink";
+  const pacedThoughts = usePacedLines(message.thoughts || "", message.status === "thinking", 2);
 
   useEffect(() => {
     if (message.status !== "streaming") return;
@@ -252,7 +266,7 @@ function AiMessage({ message, mid }: { message: ChatMessage; mid: string }) {
     <div className="message-ai" data-mid={mid}>
       <style>{amCSS}</style>
       <div className="ai-content">
-        {isThinkingModel ? (<ThinkingStatus done={message.status !== "thinking"} sources={message.sources} thoughts={message.thoughts} />) : (<BubbleIndicator dimmed={isDone} />)}
+        {isThinkingModel ? (<ThinkingStatus done={message.status !== "thinking"} sources={message.sources} thoughts={pacedThoughts} />) : (<BubbleIndicator dimmed={isDone} />)}
         <div style={{ width: "100%", maxWidth: 640 }}>
           {shouldStream && <MarkdownText text={shown} mid={mid} canvas={canvasOn} />}
           {message.status === "done" && <MarkdownText text={message.content} mid={mid} canvas={canvasOn} />}
@@ -564,10 +578,10 @@ function ChatHeader() {
       </div>
       <div id="chat-options-menu" className={optOpen ? "show" : ""}>
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); openFilesList(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Files in this chat</div>
-        <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); resetChat(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>New chat</div>
+        <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); resetChat(); clearLocalMessages(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>New chat</div>
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); if (currentChatId) togglePin(currentChatId); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 17v5" /><path d="M9 3h6l1 7 2 2H6l2-2z" /></svg>{isPinned ? "Unpin chat" : "Pin chat"}</div>
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); setRenameVal(chatTitle); setRenameOpen(true); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>Rename chat</div>
-        <div className="chat-opt danger shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); if (session && currentChatId) deleteChat(currentChatId); resetChat(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>Delete chat</div>
+        <div className="chat-opt danger shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); if (session && currentChatId) deleteChat(currentChatId); resetChat(); clearLocalMessages(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>Delete chat</div>
       </div>
       <div id="rename-modal" className={renameOpen ? "show" : ""} onClick={() => setRenameOpen(false)}>
         <div className="rename-box" onClick={(e) => e.stopPropagation()}>
@@ -653,7 +667,7 @@ function MenuDrawer() {
             {session ? (sorted.length > 0 ? (<div>{sorted.map((c) => (<div className={`hist-item ${c.id === currentChatId ? "current" : ""}`} key={c.id} onClick={async () => { const msgs = await fetchMessages(c.id); loadMessages(msgs); setCurrentChat(c.id, c.title); setDrawerOpen(false); }}><div className="hist-main"><div className="hist-title">{c.title}</div><div className="hist-time">{timeAgo(c.updated_at)}</div></div>{pinned.includes(c.id) && (<span className="hist-pin"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 17v5" /><path d="M9 3h6l1 7 2 2H6l2-2z" /></svg></span>)}</div>))}</div>) : (<div className="hist-empty">{query ? "No chats match your search." : "No chats yet. Your conversations will appear here once you start talking."}</div>)) : (<div className="hist-empty">Sign in to save your chats.</div>)}
           </div>
           <div className="drawer-footer">
-            {session ? (<div className="user-row"><span className="user-email">{session.user.email || "Signed in"}</span><button className="signout-btn" onClick={(e) => shimmerThen(e, async () => { await signOut(); resetChat(); setChats([]); })}>Sign out</button></div>) : (
+            {session ? (<div className="user-row"><span className="user-email">{session.user.email || "Signed in"}</span><button className="signout-btn" onClick={(e) => shimmerThen(e, async () => { await signOut(); resetChat(); })}>Sign out</button></div>) : (
               <button className="signin-btn shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openAuthFromDrawer(), 150); })}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></svg>Sign in</button>
             )}
             <div className="profile-row">
@@ -899,6 +913,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [dtRunning, setDtRunning] = useState(false);
   const { activeModel, addMessage, updateMessage, isSending, setIsSending, setActiveModel } = useChatStore();
+  const messages = useChatStore((s) => s.messages);
   const { viewMode, fontScale } = useUIStore();
   const session = useAuthStore((s) => s.session);
   const imagineNonce = useImagineStore((s) => s.nonce);
@@ -909,6 +924,15 @@ export default function App() {
   useEffect(() => { const t = setTimeout(() => setLoading(false), 7000); return () => clearTimeout(t); }, []);
   useEffect(() => { (document.documentElement.style as any).zoom = String(fontScale); }, [fontScale]);
   useEffect(() => { if (session?.user?.id) runDailyMemorySync(); }, [session]);
+
+  // restore local conversation on fresh load
+  useEffect(() => {
+    const st = useChatStore.getState();
+    if (st.messages.length === 0) { const local = loadLocalMessages(); if (local.length) st.loadMessages(local); }
+  }, []);
+  // persist messages locally on every change
+  useEffect(() => { if (messages.length) saveLocalMessages(messages); else clearLocalMessages(); }, [messages]);
+
   useEffect(() => {
     const h = (e: MessageEvent) => { if (e.origin !== "https://quix-deepthink.lovable.app") return; const d = e.data || {}; if (d.type === "deepthink:started") setDtRunning(true); if (d.type === "deepthink:complete" || d.type === "deepthink:stopped") setDtRunning(false); if (d.type === "deepthink:ready") setDtRunning(!!d.running); };
     window.addEventListener("message", h);
@@ -942,7 +966,7 @@ export default function App() {
       const isThinkM = m === "thinking"; const isCoderM = m === "coder";
       updateMessage(aiId, { model: m, status: "thinking", content: "", thoughts: "" });
       const fullRef = { current: "" }; let released = !isThinkM; let capTimer: any = null;
-      const releaseNow = () => { if (released) return; released = true; const full = fullRef.current; const idx = full.indexOf(THINK_SEP); if (idx > -1) { updateMessage(aiId, { thoughts: full.slice(0, idx).trim(), content: full.slice(idx + THINK_SEP.length).replace(/^\n+/, ""), status: "streaming" }); } else { updateMessage(aiId, { content: full, status: "streaming" }); } };
+      const releaseNow = () => { if (released) return; released = true; const full = fullRef.current; const idx = full.indexOf(THINK_SEP); if (idx > -1) { updateMessage(aiId, { thoughts: full.slice(0, idx).trim(), content: stripObs(full.slice(idx + THINK_SEP.length).replace(/^\n+/, "")), status: "streaming" }); } else { updateMessage(aiId, { content: stripObs(full), status: "streaming" }); } };
       if (isThinkM) capTimer = setTimeout(() => { if (!released) releaseNow(); }, THINK_MAX_MS);
       const history = useChatStore.getState().messages.filter((x) => x.id !== aiId && x.content.trim() !== "");
       let prompt = buildPrompt(m, text, history);
@@ -956,15 +980,18 @@ export default function App() {
           if (isThinkM) {
             fullRef.current = t; const idx = t.indexOf(THINK_SEP);
             if (!released) { if (idx > -1) releaseNow(); else updateMessage(aiId, { thoughts: t.trim(), status: "thinking" }); }
-            else { if (idx > -1) { updateMessage(aiId, { thoughts: t.slice(0, idx).trim(), content: t.slice(idx + THINK_SEP.length).replace(/^\n+/, ""), status: "streaming" }); } else { updateMessage(aiId, { content: t, status: "streaming" }); } }
-          } else { if (!gotText) { gotText = true; updateMessage(aiId, { content: t, status: "streaming" }); } else updateMessage(aiId, { content: t }); }
+            else { if (idx > -1) { updateMessage(aiId, { thoughts: t.slice(0, idx).trim(), content: stripObs(t.slice(idx + THINK_SEP.length).replace(/^\n+/, "")), status: "streaming" }); } else { updateMessage(aiId, { content: stripObs(t), status: "streaming" }); } }
+          } else { if (!gotText) { gotText = true; updateMessage(aiId, { content: stripObs(t), status: "streaming" }); } else updateMessage(aiId, { content: stripObs(t) }); }
         },
         onDone: (r) => {
           clearTimeout(capTimer);
-          if (r.text) {
-            const full = fullRef.current || r.text; const idx = full.indexOf(THINK_SEP);
+          const raw = r.text || fullRef.current;
+          const obs = extractObs(raw);
+          if (obs) saveObservation(obs);
+          if (raw) {
+            const full = stripObs(raw); const idx = full.indexOf(THINK_SEP);
             if (isThinkM && idx > -1) { updateMessage(aiId, { thoughts: full.slice(0, idx).trim(), content: full.slice(idx + THINK_SEP.length).replace(/^\n+/, "") || "Done.", sources: r.sources, status: "streaming", doneStreaming: true }); }
-            else { updateMessage(aiId, { content: r.text, thoughts: r.thoughts, sources: r.sources, status: "streaming", doneStreaming: true }); }
+            else { updateMessage(aiId, { content: full, thoughts: r.thoughts, sources: r.sources, status: "streaming", doneStreaming: true }); }
           } else { attempt(i + 1); }
         },
       }).catch(() => { clearTimeout(capTimer); attempt(i + 1); });
