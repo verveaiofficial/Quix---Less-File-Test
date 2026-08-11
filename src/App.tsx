@@ -15,6 +15,11 @@ const CHAIN: Record<string, string[]> = {
   deepthink: ["deepthink", "flash", "lite"], coder: ["coder", "flash", "lite"],
 };
 
+/* ================= LOCAL CHAT HISTORY (guests) ================= */
+const LOCAL_CHATS_KEY = "quix_local_chats";
+function loadLocalChats(): any[] { try { const a = JSON.parse(localStorage.getItem(LOCAL_CHATS_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch { return []; } }
+function pushLocalChat(chat: any) { try { const a = loadLocalChats(); a.unshift(chat); localStorage.setItem(LOCAL_CHATS_KEY, JSON.stringify(a.slice(0, 20))); } catch {} }
+
 /* ================= SMALL STORES ================= */
 const PIN_KEY = "quix_pinned_v1";
 const usePinStore = create<any>((set, get) => ({
@@ -26,7 +31,6 @@ const useImagineStore = create<any>((set) => ({ nonce: 0, bump: () => set((s: an
 function shimmer(e: any) { const el = e.currentTarget as HTMLElement; el.classList.remove("shimmer"); void el.offsetWidth; el.classList.add("shimmer"); setTimeout(() => el.classList.remove("shimmer"), 500); }
 function shimmerThen(e: any, fn: () => void) { shimmer(e); setTimeout(fn, 450); }
 
-/* reveals reasoning line-by-line at N lines/sec (slower than answer stream) */
 function usePacedLines(full: string, active: boolean, linesPerSec = 2): string {
   const totalLines = useMemo(() => full.split("\n").length, [full]);
   const [shownLines, setShownLines] = useState(active ? 0 : Infinity);
@@ -235,20 +239,21 @@ function AiMessage({ message, mid }: { message: ChatMessage; mid: string }) {
   const isThinkingModel = message.model === "thinking" || message.model === "deepthink";
   const pacedThoughts = usePacedLines(message.thoughts || "", message.status === "thinking", 2);
 
+  // Only finalize when the stream truly ends AND typewriter caught up.
   useEffect(() => {
     if (message.status !== "streaming") return;
-    if (message.doneStreaming) {
+    if (!message.doneStreaming) return;               // still streaming -> keep stop button alive
+    if (hasCode) {
+      updateMessage(message.id, { status: "done" });
       useChatStore.getState().setIsSending(false);
-      if (hasCode) {
-        updateMessage(message.id, { status: "done" });
-        const { currentChatId } = useChatStore.getState(); const session = useAuthStore.getState().session;
-        if (currentChatId && session) insertMessage(currentChatId, { ...message, status: "done" });
-        return;
-      }
+      const { currentChatId } = useChatStore.getState(); const session = useAuthStore.getState().session;
+      if (currentChatId && session) insertMessage(currentChatId, { ...message, status: "done" });
+      return;
     }
-    if (!hasCode && message.doneStreaming && shown.length >= message.content.length) {
+    if (shown.length >= message.content.length) {
       const t = setTimeout(() => {
-        updateMessage(message.id, { status: "done" }); useChatStore.getState().setIsSending(false);
+        updateMessage(message.id, { status: "done" });
+        useChatStore.getState().setIsSending(false);
         const { currentChatId } = useChatStore.getState(); const session = useAuthStore.getState().session;
         if (currentChatId && session) insertMessage(currentChatId, { ...message, status: "done" });
       }, 150);
@@ -578,7 +583,7 @@ function ChatHeader() {
       </div>
       <div id="chat-options-menu" className={optOpen ? "show" : ""}>
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); openFilesList(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Files in this chat</div>
-        <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); resetChat(); clearLocalMessages(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>New chat</div>
+        <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); archiveCurrent(); resetChat(); clearLocalMessages(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>New chat</div>
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); if (currentChatId) togglePin(currentChatId); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 17v5" /><path d="M9 3h6l1 7 2 2H6l2-2z" /></svg>{isPinned ? "Unpin chat" : "Pin chat"}</div>
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); setRenameVal(chatTitle); setRenameOpen(true); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>Rename chat</div>
         <div className="chat-opt danger shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); if (session && currentChatId) deleteChat(currentChatId); resetChat(); clearLocalMessages(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>Delete chat</div>
@@ -645,10 +650,12 @@ function MenuDrawer() {
   const { session, signOut } = useAuthStore();
   const pinned = usePinStore((s) => s.pinned);
   const [chats, setChats] = useState<any[]>([]);
+  const [localChats, setLocalChats] = useState<any[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [query, setQuery] = useState("");
-  useEffect(() => { if (drawerOpen && session) fetchChats().then(setChats); }, [drawerOpen, session]);
-  const filtered = query.trim() ? chats.filter((c) => c.title?.toLowerCase().includes(query.trim().toLowerCase())) : chats;
+  useEffect(() => { if (drawerOpen && session) fetchChats().then(setChats); if (drawerOpen && !session) setLocalChats(loadLocalChats()); }, [drawerOpen, session]);
+  const source = session ? chats : localChats;
+  const filtered = query.trim() ? source.filter((c) => c.title?.toLowerCase().includes(query.trim().toLowerCase())) : source;
   const sorted = [...filtered].sort((a, b) => (pinned.includes(b.id) ? 1 : 0) - (pinned.includes(a.id) ? 1 : 0));
   return (
     <>
@@ -664,7 +671,7 @@ function MenuDrawer() {
           </div>
           <div className="drawer-scroll">
             <div className="hist-label">Recent</div>
-            {session ? (sorted.length > 0 ? (<div>{sorted.map((c) => (<div className={`hist-item ${c.id === currentChatId ? "current" : ""}`} key={c.id} onClick={async () => { const msgs = await fetchMessages(c.id); loadMessages(msgs); setCurrentChat(c.id, c.title); setDrawerOpen(false); }}><div className="hist-main"><div className="hist-title">{c.title}</div><div className="hist-time">{timeAgo(c.updated_at)}</div></div>{pinned.includes(c.id) && (<span className="hist-pin"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 17v5" /><path d="M9 3h6l1 7 2 2H6l2-2z" /></svg></span>)}</div>))}</div>) : (<div className="hist-empty">{query ? "No chats match your search." : "No chats yet. Your conversations will appear here once you start talking."}</div>)) : (<div className="hist-empty">Sign in to save your chats.</div>)}
+            {sorted.length > 0 ? (<div>{sorted.map((c) => (<div className={`hist-item ${c.id === currentChatId ? "current" : ""}`} key={c.id} onClick={async () => { if (session) { const msgs = await fetchMessages(c.id); loadMessages(msgs); setCurrentChat(c.id, c.title); } else { loadMessages(c.messages || []); setCurrentChat(c.id, c.title); } setDrawerOpen(false); }}><div className="hist-main"><div className="hist-title">{c.title}</div><div className="hist-time">{c.updated_at ? timeAgo(c.updated_at) : (c.savedAt ? timeAgo(c.savedAt) : "")}</div></div>{pinned.includes(c.id) && (<span className="hist-pin"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M12 17v5" /><path d="M9 3h6l1 7 2 2H6l2-2z" /></svg></span>)}</div>))}</div>) : (<div className="hist-empty">{query ? "No chats match your search." : "No chats yet. Your conversations will appear here once you start talking."}</div>)}
           </div>
           <div className="drawer-footer">
             {session ? (<div className="user-row"><span className="user-email">{session.user.email || "Signed in"}</span><button className="signout-btn" onClick={(e) => shimmerThen(e, async () => { await signOut(); resetChat(); })}>Sign out</button></div>) : (
@@ -909,6 +916,20 @@ const layerCSS = `
 .qx-layer iframe { width: 100%; height: 100%; border: none; display: block; background: #000; }
 `;
 
+// archive the current conversation into history before starting fresh
+function archiveCurrent() {
+  const st = useChatStore.getState();
+  const sess = useAuthStore.getState().session;
+  const msgs = st.messages;
+  if (!msgs.length) return;
+  if (sess?.user?.id) {
+    // logged-in: messages already saved incrementally to Supabase; ensure ai side flushed
+    return;
+  }
+  // guest: keep a local history entry so it shows in the drawer
+  pushLocalChat({ id: st.currentChatId || rid(), title: st.chatTitle || "New Chat", messages: msgs, savedAt: new Date().toISOString() });
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true);
   const [dtRunning, setDtRunning] = useState(false);
@@ -925,13 +946,9 @@ export default function App() {
   useEffect(() => { (document.documentElement.style as any).zoom = String(fontScale); }, [fontScale]);
   useEffect(() => { if (session?.user?.id) runDailyMemorySync(); }, [session]);
 
-  // restore local conversation on fresh load
-  useEffect(() => {
-    const st = useChatStore.getState();
-    if (st.messages.length === 0) { const local = loadLocalMessages(); if (local.length) st.loadMessages(local); }
-  }, []);
-  // persist messages locally on every change
-  useEffect(() => { if (messages.length) saveLocalMessages(messages); else clearLocalMessages(); }, [messages]);
+  // NOTE: we intentionally do NOT restore the last chat on refresh -> always a fresh chat.
+  // Messages are persisted locally as a backup only.
+  useEffect(() => { if (messages.length) saveLocalMessages(messages); }, [messages]);
 
   useEffect(() => {
     const h = (e: MessageEvent) => { if (e.origin !== "https://quix-deepthink.lovable.app") return; const d = e.data || {}; if (d.type === "deepthink:started") setDtRunning(true); if (d.type === "deepthink:complete" || d.type === "deepthink:stopped") setDtRunning(false); if (d.type === "deepthink:ready") setDtRunning(!!d.running); };
