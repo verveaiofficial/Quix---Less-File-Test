@@ -43,7 +43,11 @@ Step 12 — Deliver: No preamble. No filler. Just the response.
 
 Step 12 — Do web search on what needed, when needed.
 
-Step 13 — Before giving the reply you should think about the exact important lines you gonna say, keep important lines ready in your head then do the full process AGAIN, then give the reply.
+Step 13 —
+
+Step 1 — Before giving the you should think about the exact important lines you gonna say, keep important lines ready in your head then do the full process AGAIN.
+
+Step 1 — Do the full process 10 times before answering.
 
 
 ===========================================
