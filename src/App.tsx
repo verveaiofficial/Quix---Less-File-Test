@@ -56,4 +56,102 @@ const stCSS = `#settings-screen{position:fixed;inset:0;z-index:150;background:#0
 function SettingsPage() { const { settingsOpen, closeSettings, fontScale, setFontScale } = useUIStore(); const { profile, setProfile } = useProfileStore(); const { session, signOut } = useAuthStore(); const { resetChat } = useChatStore(); const { memories, loadFor, addMemory, removeMemory } = useMemoryStore(); const usage = useUsageStore((s) => s.usage); const limitFor = useUsageStore((s) => s.limitFor); const fileRef = useRef<HTMLInputElement>(null); const [memInput, setMemInput] = useState(""); const uid = session?.user?.id ?? null; useEffect(() => { if (uid) loadFor(uid); }, [uid, loadFor]); useEffect(() => { if (session?.user?.email && !profile.email) setProfile({ email: session.user.email }); const meta = session?.user?.user_metadata as any; if (meta?.full_name && !profile.name) setProfile({ name: meta.full_name }); }, [session]); return (<><style>{stCSS}</style><div id="settings-screen" className={settingsOpen ? "show" : ""}><div className="set-header"><button className="set-back" onClick={closeSettings}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Profile & Settings</div></div><div className="set-body"><div className="avatar-wrap"><button className="avatar" onClick={() => fileRef.current?.click()}>{profile.avatar ? (<img src={profile.avatar} alt="profile" />) : (<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>)}</button><input type="file" accept="image/*" ref={fileRef} style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f || f.size > 1.5 * 1024 * 1024) return; const r = new FileReader(); r.onload = () => setProfile({ avatar: String(r.result || "") }); r.readAsDataURL(f); }} /></div><div className="set-section"><div className="set-label">Profile</div><input className="set-field" type="text" placeholder="Name" value={profile.name} onChange={(e) => setProfile({ name: e.target.value })} /><input className="set-field" type="text" placeholder="Username" value={profile.username} onChange={(e) => setProfile({ username: e.target.value })} /><input className="set-field" type="email" placeholder="Email" value={profile.email} onChange={(e) => setProfile({ email: e.target.value })} /><input className="set-field" type="date" value={profile.dob} onChange={(e) => setProfile({ dob: e.target.value })} /></div><div className="set-section"><div className="set-label">Daily message limits</div>{CHAT_MODELS.map((m) => { const lim = limitFor(m); const rem = Math.max(0, lim - (usage[m] ?? 0)); return (<div className="limit-row" key={m}><div className="limit-top"><span>{MODELS[m].name}</span><span>{lim === 0 ? "Sign in required" : `${rem}/${lim} left`}</span></div><div className="limit-bar"><div className="limit-fill" style={{ width: lim === 0 ? 0 : `${(rem / lim) * 100}%` }} /></div></div>); })}<div className="mem-empty">Limits reset at midnight UTC.</div></div>{uid && (<div className="set-section"><div className="set-label">Memory</div><div className="mem-input-row"><input className="set-field" type="text" placeholder="Teach Quix something about you..." value={memInput} onChange={(e) => setMemInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && memInput.trim()) { addMemory(uid, memInput); setMemInput(""); } }} /><button className="mem-add" onClick={() => { if (memInput.trim()) { addMemory(uid, memInput); setMemInput(""); } }}>+</button></div>{memories.length > 0 ? (memories.map((m: any) => (<div className="mem-item" key={m.id}><span>{m.text}</span><button onClick={() => removeMemory(uid, m.id)}>×</button></div>))) : (<div className="mem-empty">No memories yet.</div>)}</div>)}<div className="set-section"><div className="set-label">Screen size</div><div className="font-row"><button className="font-btn" onClick={() => setFontScale(fontScale - 0.05)}>−</button><span className="font-val">{Math.round(fontScale * 100)}%</span><button className="font-btn" onClick={() => setFontScale(fontScale + 0.05)}>+</button></div></div>{uid && (<div className="set-section"><button className="signout-big" onClick={async () => { await signOut(); resetChat(); }}>Sign out</button></div>)}<div className="watermark">Quix · {APP_VERSION}</div></div></div></>); }
 
 const ldCSS = `#loader{position:fixed;inset:0;background:#050508;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;will-change:transform}#loader.slide-out{transition:transform .4s cubic-bezier(.7,0,1,.7);transform:translateX(110%)}.ld-center{display:flex;flex-direction:column;align-items:center;gap:24px;transform:translateY(-130vh)}.ld-center.drop{animation:dropFall 1.5s cubic-bezier(.22,.61,.36,1) forwards}@keyframes dropFall{0%{transform:translateY(-130vh)}72%{transform:translateY(12px)}86%{transform:translateY(-4px)}100%{transform:translateY(0)}}canvas{display:block}.quix-label{font-family:'Syne',sans-serif;font-weight:800;font-size:13px;letter-spacing:.38em;color:rgba(255,255,255,.3);text-transform:uppercase;opacity:0;transition:opacity .5s ease}.quix-label.show{opacity:1}.verve-brand{position:fixed;bottom:28px;left:50%;transform:translateX(-50%);font-family:'DM Sans',sans-serif;font-size:11px;letter-spacing:.16em;color:rgba(255,255,255,.15);opacity:0;transition:opacity .5s ease}.verve-brand.show{opacity:1}.verve-brand span{color:rgba(255,255,255,.28);font-weight:500}`;
-function LoadingScreen() { const loaderRef = useRef<HTMLDivElement>(null); const centerRef = useRef<HTMLDivElement>(null); const canvasRef = useRef<HTMLCanvasElement>(null); const labelRef = useRef<HTMLDivElement>(null); const brandRef = useRef<HTMLDivElement>(null); useEffect(() => { const canvas = canvasRef.current; if (!canvas) return; const ctx = canvas.getContext("2d"); if (!ctx) return; const W = 185, H = 185, R = 92, cx = 92, cy = 92; const INTRO_MS = 1500; const blobs = ORB_COLORS.map((color, i) => ({ fx: 0.71 + i * 0.09, fy: 1.13 - i * 0.05, phase: i * 0.9, amp: 0.5, r: 80 - i * 2, color })); const KF = [{ p: 0.0, oy: -170, rx: 38, ry: 52 }, { p: 0.32, oy: -8, rx: 36, ry: 58 }, { p: 0.46, oy: 4, rx: 118, ry: 42 }, { p: 0.68, oy: 0, rx: 96, ry: 88 }, { p: 1.0, oy: 0, rx: 92, ry: 92 }]; const easeInCubic = (t: number) => t * t * t; const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3); const lerp = (a: number, b: number, t: number) => a + (b - a) * t; const getClip = (p: number) => { let a = KF[0], b = KF[1]; for (let i = 0; i < KF.length - 1; i++) { if (p >= KF[i].p && p <= KF[i + 1].p) { a = KF[i]; b = KF[i + 1]; break; } } const span = b.p - a.p; const local = span === 0 ? 1 : (p - a.p) / span; const e = p < 0.44 ? easeInCubic(local) : easeOutCubic(local); return { oy: lerp(a.oy, b.oy, e), rx: lerp(a.rx, b.rx, e), ry: lerp(a.ry, b.ry, e) }; }; const clipShape = (c: CanvasRenderingContext2D, ecx: number, ecy: number, rx: number, ry: number, fall: number) => { c.beginPath(); if (fall > 0.05) { const pointY = ecy - ry * 1.35; c.arc(ecx, ecy + ry * 0.1, ry * fall * 1.1 + rx * (1 - fall), Math.PI * 0.15, Math.PI * 0.85); c.bezierCurveTo(ecx - rx * 0.8, ecy - ry * 0.3, ecx - rx * 0.15, pointY + ry * 0.3, ecx, pointY); c.bezierCurveTo(ecx + rx * 0.15, pointY + ry * 0.3, ecx + rx * 0.8, ecy - ry
+function LoadingScreen() { const loaderRef = useRef<HTMLDivElement>(null); const centerRef = useRef<HTMLDivElement>(null); const canvasRef = useRef<HTMLCanvasElement>(null); const labelRef = useRef<HTMLDivElement>(null); const brandRef = useRef<HTMLDivElement>(null); useEffect(() => { const canvas = canvasRef.current; if (!canvas) return; const ctx = canvas.getContext("2d"); if (!ctx) return; const W = 185, H = 185, R = 92, cx = 92, cy = 92; const INTRO_MS = 1500; const blobs = ORB_COLORS.map((color, i) => ({ fx: 0.71 + i * 0.09, fy: 1.13 - i * 0.05, phase: i * 0.9, amp: 0.5, r: 80 - i * 2, color })); const KF = [{ p: 0.0, oy: -170, rx: 38, ry: 52 }, { p: 0.32, oy: -8, rx: 36, ry: 58 }, { p: 0.46, oy: 4, rx: 118, ry: 42 }, { p: 0.68, oy: 0, rx: 96, ry: 88 }, { p: 1.0, oy: 0, rx: 92, ry: 92 }]; const easeInCubic = (t: number) => t * t * t; const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3); const lerp = (a: number, b: number, t: number) => a + (b - a) * t; const getClip = (p: number) => { let a = KF[0], b = KF[1]; for (let i = 0; i < KF.length - 1; i++) { if (p >= KF[i].p && p <= KF[i + 1].p) { a = KF[i]; b = KF[i + 1]; break; } } const span = b.p - a.p; const local = span === 0 ? 1 : (p - a.p) / span; const e = p < 0.44 ? easeInCubic(local) : easeOutCubic(local); return { oy: lerp(a.oy, b.oy, e), rx: lerp(a.rx, b.rx, e), ry: lerp(a.ry, b.ry, e) }; }; const clipShape = (c: CanvasRenderingContext2D, ecx: number, ecy: number, rx: number, ry: number, fall: number) => { c.beginPath(); if (fall > 0.05) { const pointY = ecy - ry * 1.35; c.arc(ecx, ecy + ry * 0.1, ry * fall * 1.1 + rx * (1 - fall), Math.PI * 0.15, Math.PI * 0.85); c.bezierCurveTo(ecx - rx * 0.8, ecy - ry * 0.3, ecx - rx * 0.15, pointY + ry * 0.3, ecx, pointY); c.bezierCurveTo(ecx + rx * 0.15, pointY + ry * 0.3, ecx + rx * 0.8, ecy - ry * 0.3, ecx + rx * ((ry * fall * 1.1 + rx * (1 - fall)) / rx) * 0.95, ecy + ry * 0.1 - ry * fall); c.closePath(); } else { c.ellipse(ecx, ecy, rx, ry, 0, 0, Math.PI * 2); } }; let bt = 0, last = performance.now(), id = 0; let introStart: number | null = null, introDone = false; const frame = (now: number) => { const dt = now - last; last = now; const s = (Math.sin(((now % 5000) / 5000) * Math.PI * 2 - Math.PI / 2) + 1) / 2; bt += (0.12 + (2.2 - 0.12) * s) * dt * 0.001; ctx.clearRect(0, 0, W, H); ctx.save(); if (!introDone) { if (introStart === null) introStart = now; const p = Math.min(1, (now - introStart) / INTRO_MS); const { oy, rx, ry } = getClip(p); const fall = Math.max(0, Math.min(1, -oy / 140)); ctx.beginPath(); clipShape(ctx, cx, cy + oy, rx, ry, fall); ctx.clip(); if (p >= 1) { introDone = true; labelRef.current?.classList.add("show"); brandRef.current?.classList.add("show"); } } else { ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip(); } const bg = ctx.createRadialGradient(cx * 0.84, cy * 0.76, 4, cx, cy, R); bg.addColorStop(0, "#1a1a2e"); bg.addColorStop(0.3, "#0f1f3d"); bg.addColorStop(0.55, "#2a1b4d"); bg.addColorStop(0.8, "#3d1f4d"); bg.addColorStop(1, "#0f2a3d"); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = "screen"; blobs.forEach((b) => { const bx = cx + Math.sin(b.fx * bt + b.phase) * R * b.amp; const by = cy + Math.cos(b.fy * bt + b.phase * 1.4) * R * b.amp; const br = b.r * (1 + 0.08 * Math.sin(b.fx * bt * 2.3 + b.phase)); const g = ctx.createRadialGradient(bx, by, 0, bx, by, br); g.addColorStop(0, b.color + "cc"); g.addColorStop(0.35, b.color + "88"); g.addColorStop(0.7, b.color + "33"); g.addColorStop(1, b.color + "00"); ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill(); }); ctx.restore(); id = requestAnimationFrame(frame); }; let startTimer: any = null; let slideTimer: any = null; startTimer = setTimeout(() => { centerRef.current?.classList.add("drop"); last = performance.now(); id = requestAnimationFrame(frame); }, 1000); slideTimer = setTimeout(() => { loaderRef.current?.classList.add("slide-out"); }, 6500); return () => { clearTimeout(startTimer); clearTimeout(slideTimer); cancelAnimationFrame(id); }; }, []); return (<><style>{ldCSS}</style><div id="loader" ref={loaderRef}><div className="ld-center" ref={centerRef}><canvas ref={canvasRef} width={185} height={185} /><div className="quix-label" ref={labelRef}>QUIX</div></div><div className="verve-brand" ref={brandRef}>from <span>Verve</span></div></div></>); }
+
+const layerCSS = `.qx-layer{position:fixed;top:56px;left:0;right:0;bottom:0;transition:transform .5s cubic-bezier(.25,.46,.45,.94);will-change:transform;backface-visibility:hidden;background:#000}.qx-layer.center{transform:translate3d(0,0,0)}.qx-layer.left{transform:translate3d(-100%,0,0)}.qx-layer.right{transform:translate3d(100%,0,0)}.qx-layer iframe{width:100%;height:100%;border:none;display:block;background:#000}`;
+
+export default function App() {
+  const [loading, setLoading] = useState(true);
+  const { activeModel, addMessage, updateMessage, isSending, setIsSending, setActiveModel } = useChatStore();
+  const { viewMode, fontScale } = useUIStore();
+  const session = useAuthStore((s) => s.session);
+
+  useEffect(() => { useAuthStore.getState().init(); }, []);
+  useEffect(() => { const t = setTimeout(() => setLoading(false), 7000); return () => clearTimeout(t); }, []);
+  useEffect(() => { (document.documentElement.style as any).zoom = String(fontScale); }, [fontScale]);
+  useEffect(() => { if (session?.user?.id) runDailyMemorySync(); }, [session]);
+
+  const handleSend = async (text: string, attachments: PendingAttachment[]) => {
+    if (useChatStore.getState().isSending) return;
+    const usage = useUsageStore.getState();
+    const sessNow = useAuthStore.getState().session;
+    const startModel = usage.resolve(activeModel);
+
+    if (!startModel) {
+      addMessage({ id: rid(), role: "user", model: activeModel, content: text, createdAt: Date.now(), status: "done" });
+      const isGuest = !sessNow;
+      const msg = isGuest && activeModel !== "thinking" ? "This model requires sign-in. Create a free account to unlock all models." : isGuest ? "You've used your 3 free Thinking messages. Sign in to keep talking — it's free." : "Daily limit reached for all models. Limits reset at midnight UTC.";
+      addMessage({ id: rid(), role: "ai", model: activeModel, content: msg, createdAt: Date.now(), status: "error" });
+      if (isGuest) useUIStore.getState().openAuth();
+      return;
+    }
+
+    const userMessage: ChatMessage = { id: rid(), role: "user", model: startModel, content: text, createdAt: Date.now(), status: "done", attachments: attachments.map((a) => ({ name: a.name, kind: a.kind, previewUrl: a.previewUrl })) };
+    const aiId = rid();
+    if (startModel !== activeModel) setActiveModel(startModel);
+    let chatId = useChatStore.getState().currentChatId;
+    if (sessNow) { if (!chatId) { const title = text.slice(0, 40) || "New Chat"; chatId = await createChat(title); if (chatId) useChatStore.getState().setCurrentChat(chatId, title); } if (chatId) insertMessage(chatId, userMessage); }
+    addMessage(userMessage);
+    addMessage({ id: aiId, role: "ai", model: startModel, content: "", thoughts: "", createdAt: Date.now(), status: "thinking" } as any);
+    setIsSending(true);
+    const chain = CHAIN[startModel] || [startModel];
+
+    const attempt = (i: number) => {
+      if (i >= chain.length) { updateMessage(aiId, { content: "All models are out of quota for today. Limits reset at midnight UTC.", status: "error" }); setIsSending(false); return; }
+      const m = chain[i];
+      if (m !== useChatStore.getState().activeModel) setActiveModel(m);
+      useUsageStore.getState().consume(m);
+      const isThinkM = m === "thinking" || m === "deepthink";
+      const isCoderM = m === "coder";
+      const t0 = Date.now();
+      updateMessage(aiId, { model: m, status: "thinking", content: "", thoughts: "", thinkStart: t0 } as any);
+      const history = useChatStore.getState().messages.filter((x) => x.id !== aiId && x.content.trim() !== "");
+      let prompt = buildPrompt(m, text, history);
+      if (isThinkM) prompt += `\n\n--- Thinking protocol ---\nThink out loud as short bullet lines starting with "• ". Stream reasoning naturally.\nWhen complete, write a line containing exactly "${THINK_SEP}", then give the final answer.`;
+      if (isCoderM) prompt += `\n\n--- Coder protocol ---\nWrite a brief friendly intro sentence FIRST, then the code.`;
+      if (useCanvasStore.getState().on) prompt += `\n\n--- Canvas mode ---\nOutput files inside fenced code blocks tagged with their language.`;
+      let thinkFrozen = false;
+      const freezeThink = () => { if (thinkFrozen) return undefined; thinkFrozen = true; return Math.max(1, Math.round((Date.now() - t0) / 1000)); };
+      askGeminiStream(m, prompt, { search: isThinkM, nativeThoughts: false, attachments }, {
+        onThoughts: () => {},
+        onText: (t) => {
+          const idx = t.indexOf(THINK_SEP);
+          if (idx > -1) { const tt = freezeThink(); updateMessage(aiId, { thoughts: t.slice(0, idx), content: stripObs(t.slice(idx + THINK_SEP.length).replace(/^\n+/, "")), status: "streaming", ...(tt != null ? { thinkTime: tt } : {}) } as any); }
+          else { updateMessage(aiId, { thoughts: t, status: "thinking" }); }
+        },
+        onDone: (r) => {
+          const raw = r.text || "";
+          const obs = extractObs(raw) || `User asked: "${text.slice(0, 140)}"`;
+          saveObservation(obs);
+          const full = stripObs(raw);
+          const idx = full.indexOf(THINK_SEP);
+          const tt = freezeThink();
+          if (idx > -1) { updateMessage(aiId, { thoughts: full.slice(0, idx), content: full.slice(idx + THINK_SEP.length).replace(/^\n+/, "") || "Done.", sources: r.sources, status: "streaming", doneStreaming: true, ...(tt != null ? { thinkTime: tt } : {}) } as any); }
+          else if (full) { updateMessage(aiId, { content: full, sources: r.sources, status: "streaming", doneStreaming: true, ...(tt != null ? { thinkTime: tt } : {}) } as any); }
+          else { attempt(i + 1); }
+        },
+      }).catch(() => { attempt(i + 1); });
+    };
+    attempt(0);
+  };
+
+  return (
+    <div style={{ height: "100dvh", background: "#000", color: "#fff", overflow: "hidden", position: "relative" }}>
+      <style>{globalCSS}</style>
+      <style>{layerCSS}</style>
+      <ChatHeader />
+      <MenuDrawer />
+      <AuthScreen />
+      <SettingsPage />
+      <CanvasPanel />
+      <div className={`qx-layer ${viewMode === "chat" ? "center" : "left"}`}>
+        <MessageList />
+        <ChatInputBar onSend={handleSend} />
+      </div>
+      <div className={`qx-layer ${viewMode === "imagine" ? "center" : "right"}`}>
+        <iframe key={useImagineStore.getState().nonce} src={IMAGINE_URL} title="Imagine" />
+      </div>
+      {loading && <LoadingScreen />}
+    </div>
+  );
+}
