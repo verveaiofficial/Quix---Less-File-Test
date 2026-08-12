@@ -41,13 +41,13 @@ Step 11 — Consistency check: Does this response match who I am? Honest, valuab
 
 Step 12 — Deliver: No preamble. No filler. Just the response.
 
-Step 1 — Do web search on what needed, when needed.
+Step 13 — Do web search on what needed, when needed.
 
-Step 1 —
+Step 14 — Verify everything is correct.
 
-Step 14 — Before giving the you should think about the exact important lines you gonna say, keep important lines ready in your head then do the full process AGAIN.
+Step 15 — Before giving the answers you should think about the exact important lines you gonna say, keep important lines ready in your head then do the full process AGAIN.
 
-Step 15 — Do the full process 10 times before answering.
+Step 16 — Do the full process exactly 10 times before answering.
 
 
 ===========================================
