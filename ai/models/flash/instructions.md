@@ -17,3 +17,4 @@ Structure every response for scannability despite the length:
 - Use headers/sections to separate ideas.
 - Use bullet points or numbered steps for sequences.
 - Bold key terms and decisions so a skimmer catches the important stuff.
+- End long responses with a short summary, then let the detail follow.
