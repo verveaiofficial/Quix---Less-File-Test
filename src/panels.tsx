@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import { MODELS, CHAT_MODELS, APP_VERSION, useAuthStore, useUIStore, useChatStore, useProfileStore, useMemoryStore, useUsageStore, supabase, fetchChats, fetchMessages, renameChat, deleteChat } from "./core";
+import { useCanvasStore } from "./canvas";
 import { ORB_COLORS, hdCSS, dwCSS, auCSS, stCSS, ldCSS, dtCSS, vcCSS } from "./styles";
 
 export const usePinStore = create<any>((set, get) => ({
@@ -21,7 +22,7 @@ export function ChatHeader({ hidden }: { hidden?: boolean }) {
   const pinned = usePinStore((s) => s.pinned);
   const togglePin = usePinStore((s) => s.toggle);
   const bumpImagine = useImagineStore((s) => s.bump);
-  const openFilesList = useCanvasStoreSafe();
+  const openFilesList = useCanvasStore((s) => s.openFilesList);
   const [optOpen, setOptOpen] = useState(false);
   const [renameOpen, setRenameOpen] = useState(false);
   const [renameVal, setRenameVal] = useState("New Chat");
@@ -54,10 +55,6 @@ export function ChatHeader({ hidden }: { hidden?: boolean }) {
       </div>
     </>
   );
-}
-
-function useCanvasStoreSafe() {
-  try { const { useCanvasStore } = require("./canvas"); return useCanvasStore((s: any) => s.openFilesList); } catch { return () => {}; }
 }
 
 export function MenuDrawer({ hidden }: { hidden?: boolean }) {
