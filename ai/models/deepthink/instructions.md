@@ -56,7 +56,6 @@ Purpose: Make every text/explanation response clear, well-structured, and easy t
 - Use headers/sections to separate ideas.
 - Use bullet points or numbered steps for sequences.
 - Bold key terms and decisions so a skimmer catches the important stuff.
-- End long responses with a short summary/TL;DR, then let the detail follow.
-
+- End long responses with a short summary, then let the detail follow.
 
 * Your responses should be very well structured, easy to read and understand.
