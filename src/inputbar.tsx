@@ -4,7 +4,7 @@ import { useCanvasStore, extractFiles } from "./canvas";
 import { ibCSS, lockSvg } from "./styles";
 import { PendingAttachment, readFileAsAttachment } from "./ui";
 
-export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, onVoiceCall, isDeepThink, dtRunning }: { onSend?: (t: string, a: PendingAttachment[]) => void; onDeepThinkSend?: (t: string) => void; onDeepThinkStop?: () => void; onVoiceCall?: () => void; isDeepThink?: boolean; dtRunning?: boolean }) {
+export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepThink, dtRunning }: { onSend?: (t: string, a: PendingAttachment[]) => void; onDeepThinkSend?: (t: string) => void; onDeepThinkStop?: () => void; isDeepThink?: boolean; dtRunning?: boolean }) {
   const { activeModel, setActiveModel, isSending } = useChatStore();
   const messages = useChatStore((s) => s.messages);
   const canvasOn = useCanvasStore((s) => s.on);
@@ -13,7 +13,6 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, onVoice
   const [inputValue, setInputValue] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
-  const [voiceMenuOpen, setVoiceMenuOpen] = useState(false);
   const [spinClass, setSpinClass] = useState("");
   const [bottomOffset, setBottomOffset] = useState(0);
   const [listening, setListening] = useState(false);
@@ -28,13 +27,11 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, onVoice
   const session = useAuthStore((s) => s.session);
   const isGuest = !session;
 
-  useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); setVoiceMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
+  useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
   useEffect(() => { const r = () => { if (window.visualViewport) { const kb = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop; setBottomOffset(Math.max(0, kb)); } }; if (window.visualViewport) window.visualViewport.addEventListener("resize", r); return () => { if (window.visualViewport) window.visualViewport.removeEventListener("resize", r); }; }, []);
 
   const prevent = (e: any) => e.preventDefault();
-  const toggleMic = () => { setVoiceMenuOpen((p) => !p); };
-  const startVoiceType = () => { setVoiceMenuOpen(false); const w = window as any; const SR = w.SpeechRecognition || w.webkitSpeechRecognition; if (!SR) return; if (listening) { recRef.current?.stop(); setListening(false); return; } const rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false; micBase.current = inputValue; rec.onresult = (e: any) => { let t = ""; for (const r of e.results) t += r[0].transcript; setInputValue((micBase.current ? micBase.current + " " : "") + t); }; rec.onend = () => setListening(false); rec.onerror = () => setListening(false); recRef.current = rec; rec.start(); setListening(true); };
-  const startVoiceCall = () => { setVoiceMenuOpen(false); onVoiceCall?.(); };
+  const toggleMic = () => { const w = window as any; const SR = w.SpeechRecognition || w.webkitSpeechRecognition; if (!SR) return; if (listening) { recRef.current?.stop(); setListening(false); return; } const rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false; micBase.current = inputValue; rec.onresult = (e: any) => { let t = ""; for (const r of e.results) t += r[0].transcript; setInputValue((micBase.current ? micBase.current + " " : "") + t); }; rec.onend = () => setListening(false); rec.onerror = () => setListening(false); recRef.current = rec; rec.start(); setListening(true); };
   const toggleUpload = (e: any) => { e.preventDefault(); e.stopPropagation(); setModelMenuOpen(false); setSpinClass(""); setTimeout(() => { const c = spinDir.current === 1 ? "spin-cw" : "spin-ccw"; setSpinClass(c); spinDir.current *= -1; }, 10); setMenuOpen((p) => !p); };
   const pick = async (files: FileList | null) => { if (!files) return; const parsed = await Promise.all(Array.from(files).map(readFileAsAttachment)); setAttachments((p) => [...p, ...parsed.filter((x): x is PendingAttachment => x !== null)]); };
 
@@ -45,7 +42,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, onVoice
   const pickModel = (id: string) => { if (isGuest && id !== "thinking") { setModelMenuOpen(false); useUIStore.getState().openAuth(); return; } setActiveModel(id); setModelMenuOpen(false); };
   const send = () => { const text = inputValue.trim(); if (!text) return; if (isDeepThink) { onDeepThinkSend?.(text); setInputValue(""); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } return; } if (attachments.length === 0 && !text) return; onSend?.(text, attachments); setInputValue(""); setAttachments([]); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } };
   const stop = () => { if (isDeepThink) { onDeepThinkStop?.(); return; } abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
-  const mainAction = (e: any) => { e.stopPropagation(); if (showStop) return stop(); if (hasText) return send(); return toggleMic(); };
+  const mainAction = () => { if (showStop) return stop(); if (hasText) return send(); return toggleMic(); };
 
   return (
     <>
@@ -91,17 +88,9 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, onVoice
             </div>
             <div className="action-right">
               {canvasOn && !isDeepThink && (<button type="button" className="cv-pill" onClick={() => openFilesList()}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{fileCount > 0 ? ` · ${fileCount}` : ""}</button>)}
-              <div style={{ position: "relative" }}>
-                <button type="button" className={`send-btn ${showStop ? "stop" : ""} ${showMic ? (listening ? "mic listening" : "mic") : ""}`} onClick={mainAction} aria-label={showStop ? "Stop" : hasText ? "Send" : "Voice options"}>
-                  {showStop ? (<svg width="15" height="15" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>) : hasText ? (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>) : (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" /><path d="M19 10v2a7 7 0 01-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>)}
-                </button>
-                {showMic && (
-                  <div className={`voice-menu ${voiceMenuOpen ? "show" : ""}`}>
-                    <div className="voice-opt" onClick={startVoiceCall}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z" /></svg>Voice Call</div>
-                    <div className="voice-opt" onClick={startVoiceType}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" /><path d="M19 10v2a7 7 0 01-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>Voice Type</div>
-                  </div>
-                )}
-              </div>
+              <button type="button" className={`send-btn ${showStop ? "stop" : ""} ${showMic ? (listening ? "mic listening" : "mic") : ""}`} onClick={mainAction} aria-label={showStop ? "Stop" : hasText ? "Send" : "Voice input"}>
+                {showStop ? (<svg width="15" height="15" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>) : hasText ? (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>) : (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" /><path d="M19 10v2a7 7 0 01-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>)}
+              </button>
             </div>
           </div>
         </div>
