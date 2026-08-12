@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
-import { ChatMessage, AttachmentMeta, SourceItem, useChatStore, useAuthStore, useCanvasStore, insertMessage, useStreamText, copyText, rid } from "./core";
-import { FileCard, InlineCodeBlock } from "./canvas";
+import { ChatMessage, AttachmentMeta, SourceItem, useChatStore, useAuthStore, insertMessage, useStreamText, copyText, rid } from "./core";
+import { FileCard, InlineCodeBlock, useCanvasStore } from "./canvas";
 import { ORB_COLORS, qtsCSS, umCSS, amCSS, mlCSS, searchIconSvg, pageIconSvg } from "./styles";
 
 function escapeHtml(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
