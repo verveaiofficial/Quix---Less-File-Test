@@ -72,12 +72,12 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
                 </button>
                 <div className={`pop-menu ${modelMenuOpen ? "show" : ""}`}>
                   {CHAT_MODELS.map((id) => {
-                    const locked = isGuest && id !== "thinking";
+                    const locked = (isGuest && id !== "thinking") || id === "deepthink";
                     return (
-                      <div key={id} className={`model-item ${locked ? "locked" : ""}`} onClick={(e) => { e.stopPropagation(); pickModel(id); }}>
+                      <div key={id} className={`model-item ${locked ? "locked" : ""}`} onClick={(e) => { e.stopPropagation(); if (locked) return; pickModel(id); }}>
                         {activeModel === id && !locked ? (<svg viewBox="0 0 24 24" fill="none" className="model-check" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>) : locked ? (<span dangerouslySetInnerHTML={{ __html: lockSvg }} />) : (<div style={{ width: 15, flexShrink: 0 }} />)}
                         <div className="model-item-content">
-                          <span className="model-title">{MODELS[id].name}{id === "deepthink" && <span className="beta-tag">Beta</span>}{locked && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}</span>
+                          <span className="model-title">{MODELS[id].name}{id === "deepthink" && <span className="beta-tag">Coming soon</span>}{locked && id !== "deepthink" && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}</span>
                           <span className="model-desc">{MODELS[id].desc}</span>
                         </div>
                       </div>
