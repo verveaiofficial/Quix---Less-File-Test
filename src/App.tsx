@@ -8,7 +8,7 @@ import {
 import { CanvasPanel, useCanvasStore } from "./canvas";
 import { globalCSS, layerCSS } from "./styles";
 import { MessageList, PendingAttachment } from "./ui";
-import { ChatHeader, MenuDrawer, AuthScreen, SettingsPage, LoadingScreen, DeepThinkLayer, useImagineStore } from "./panels";
+import { ChatHeader, MenuDrawer, AuthScreen, SettingsPage, LoadingScreen, DeepThinkLayer, MemoriesPage, useImagineStore } from "./panels";
 import { ChatInputBar } from "./inputbar";
 
 const CHAIN: Record<string, string[]> = {
@@ -111,6 +111,7 @@ export default function App() {
       <MenuDrawer hidden={false} />
       <AuthScreen />
       <SettingsPage />
+      <MemoriesPage />
       <CanvasPanel />
       <div className={`qx-layer ${viewMode === "chat" ? "center" : "left"}`}>
         {isDeepThink ? (<DeepThinkLayer frameRef={dtFrameRef} />) : (<MessageList />)}
