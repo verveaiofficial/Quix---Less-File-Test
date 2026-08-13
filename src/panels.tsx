@@ -102,14 +102,23 @@ export function AuthScreen() {
   const [tab, setTab] = useState<"signin" | "signup">("signin");
   const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [pass, setPass] = useState(""); const [confirm, setConfirm] = useState("");
   const [err, setErr] = useState(""); const [notice, setNotice] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
   // wipe all fields every time the auth screen opens — no leftover creds, ever
   useEffect(() => { if (authOpen) { setTab("signin"); setName(""); setEmail(""); setPass(""); setConfirm(""); setErr(""); setNotice(""); } }, [authOpen]);
   const submit = async () => {
-    const sb = supabase(); if (!sb) { setErr("Auth not configured. Add Supabase env keys."); return; }
+    setIsSubmitting(true);
+    const sb = supabase(); if (!sb) { setErr("Auth not configured. Add Supabase env keys."); setIsSubmitting(false); return; }
     setErr(""); setNotice("");
-    if (tab === "signup" && pass !== confirm) { setErr("Passwords don't match."); return; }
-    if (tab === "signin") { const { error } = await sb.auth.signInWithPassword({ email, password: pass }); if (error) setErr(error.message); else closeAuth(); }
-    else { const { data, error } = await sb.auth.signUp({ email, password: pass, options: { data: { full_name: name } } }); if (error) setErr(error.message); else if (!data?.session) { setNotice("Account created. Check your email and tap the confirmation link, then come back and sign in."); setTab("signin"); setPass(""); setConfirm(""); } else closeAuth(); }
+    if (tab === "signup" && pass !== confirm) { setErr("Passwords don't match."); setIsSubmitting(false); return; }
+    if (tab === "signin") {
+      const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+      setIsSubmitting(false);
+      if (error) setErr(error.message); else closeAuth();
+    } else {
+      const { data, error } = await sb.auth.signUp({ email, password: pass, options: { data: { full_name: name } } });
+      setIsSubmitting(false);
+      if (error) setErr(error.message); else if (!data?.session) { setNotice("Account created. Check your email and tap the confirmation link, then come back and sign in."); setTab("signin"); setPass(""); setConfirm(""); } else closeAuth();
+    }
   };
   return (
     <>
@@ -128,7 +137,7 @@ export function AuthScreen() {
             <input className="auth-field" type="email" placeholder="Email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
             <input className="auth-field" type="password" placeholder="Password" autoComplete="off" value={pass} onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
             {err && <div className="auth-err">{err}</div>}
-            <button className="auth-submit" onClick={submit}>Sign in</button>
+            <button className={`auth-submit ${isSubmitting ? 'shimmer' : ''}`} onClick={submit} disabled={isSubmitting}>Sign in</button>
             <div className="auth-switch">Don't have an account? <span onClick={() => setTab("signup")}>Sign up</span></div>
           </div>
         ) : (
@@ -138,7 +147,7 @@ export function AuthScreen() {
             <input className="auth-field" type="password" placeholder="Password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} />
             <input className="auth-field" type="password" placeholder="Confirm password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
             {err && <div className="auth-err">{err}</div>}
-            <button className="auth-submit" onClick={submit}>Create account</button>
+            <button className={`auth-submit ${isSubmitting ? 'shimmer' : ''}`} onClick={submit} disabled={isSubmitting}>Create account</button>
             <div className="auth-switch">Already have an account? <span onClick={() => setTab("signin")}>Sign in</span></div>
           </div>
         )}
@@ -186,7 +195,7 @@ export function SettingsPage() {
           {uid && (
             <div className="set-section">
               <div className="set-label">Memory</div>
-              <button className="signin-btn shimmer-btn" onClick={(e) => shimmerThen(e, () => openMemories())}>
+              <button className="new-btn shimmer-btn" onClick={(e) => shimmerThen(e, () => openMemories())}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z" /></svg>
                 Memories{memories.length > 0 ? ` · ${memories.length}` : ""}
               </button>
