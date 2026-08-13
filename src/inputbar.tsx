@@ -31,7 +31,31 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
   useEffect(() => { const r = () => { if (window.visualViewport) { const kb = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop; setBottomOffset(Math.max(0, kb)); } }; if (window.visualViewport) window.visualViewport.addEventListener("resize", r); return () => { if (window.visualViewport) window.visualViewport.removeEventListener("resize", r); }; }, []);
 
   const prevent = (e: any) => e.preventDefault();
-  const toggleMic = () => { const w = window as any; const SR = w.SpeechRecognition || w.webkitSpeechRecognition; if (!SR) return; if (listening) { recRef.current?.stop(); setListening(false); return; } const rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false; micBase.current = inputValue; rec.onresult = (e: any) => { let t = ""; for (const r of e.results) t += r[0].transcript; setInputValue((micBase.current ? micBase.current + " " : "") + t); }; rec.onend = () => setListening(false); rec.onerror = () => setListening(false); recRef.current = rec; rec.start(); setListening(true); };
+  const toggleMic = () => {
+    const w = window as any;
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
+    if (!SR) return;
+    if (listening) {
+      recRef.current?.stop();
+      setListening(false);
+      return;
+    }
+    const rec = new SR();
+    rec.lang = "en-US";
+    rec.interimResults = true;
+    rec.continuous = true; // Stay active until manually stopped
+    micBase.current = inputValue;
+    rec.onresult = (e: any) => {
+      let t = "";
+      for (const r of e.results) t += r[0].transcript;
+      setInputValue((micBase.current ? micBase.current + " " : "") + t);
+    };
+    rec.onend = () => setListening(false);
+    rec.onerror = () => setListening(false);
+    recRef.current = rec;
+    rec.start();
+    setListening(true);
+  };
   const toggleUpload = (e: any) => { e.preventDefault(); e.stopPropagation(); setModelMenuOpen(false); setSpinClass(""); setTimeout(() => { const c = spinDir.current === 1 ? "spin-cw" : "spin-ccw"; setSpinClass(c); spinDir.current *= -1; }, 10); setMenuOpen((p) => !p); };
   const pick = async (files: FileList | null) => { if (!files) return; const parsed = await Promise.all(Array.from(files).map(readFileAsAttachment)); setAttachments((p) => [...p, ...parsed.filter((x): x is PendingAttachment => x !== null)]); };
 
