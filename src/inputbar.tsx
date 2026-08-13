@@ -31,31 +31,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
   useEffect(() => { const r = () => { if (window.visualViewport) { const kb = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop; setBottomOffset(Math.max(0, kb)); } }; if (window.visualViewport) window.visualViewport.addEventListener("resize", r); return () => { if (window.visualViewport) window.visualViewport.removeEventListener("resize", r); }; }, []);
 
   const prevent = (e: any) => e.preventDefault();
-  const toggleMic = () => {
-    const w = window as any;
-    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
-    if (!SR) return;
-    if (listening) {
-      recRef.current?.stop();
-      setListening(false);
-      return;
-    }
-    const rec = new SR();
-    rec.lang = "en-US";
-    rec.interimResults = true;
-    rec.continuous = true;
-    micBase.current = inputValue;
-    rec.onresult = (e: any) => {
-      let t = "";
-      for (const r of e.results) t += r[0].transcript;
-      setInputValue((micBase.current ? micBase.current + " " : "") + t);
-    };
-    rec.onend = () => setListening(false);
-    rec.onerror = () => setListening(false);
-    recRef.current = rec;
-    rec.start();
-    setListening(true);
-  };
+  const toggleMic = () => { const w = window as any; const SR = w.SpeechRecognition || w.webkitSpeechRecognition; if (!SR) return; if (listening) { recRef.current?.stop(); setListening(false); return; } const rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false; micBase.current = inputValue; rec.onresult = (e: any) => { let t = ""; for (const r of e.results) t += r[0].transcript; setInputValue((micBase.current ? micBase.current + " " : "") + t); }; rec.onend = () => setListening(false); rec.onerror = () => setListening(false); recRef.current = rec; rec.start(); setListening(true); };
   const toggleUpload = (e: any) => { e.preventDefault(); e.stopPropagation(); setModelMenuOpen(false); setSpinClass(""); setTimeout(() => { const c = spinDir.current === 1 ? "spin-cw" : "spin-ccw"; setSpinClass(c); spinDir.current *= -1; }, 10); setMenuOpen((p) => !p); };
   const pick = async (files: FileList | null) => { if (!files) return; const parsed = await Promise.all(Array.from(files).map(readFileAsAttachment)); setAttachments((p) => [...p, ...parsed.filter((x): x is PendingAttachment => x !== null)]); };
 
@@ -83,9 +59,9 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
                 <div style={{ position: "relative" }}>
                   <button type="button" className={`plus-btn ${spinClass}`} onClick={toggleUpload} onMouseDown={prevent} onTouchStart={prevent} aria-label="Upload options"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg></button>
                   <div className={`pop-menu ${menuOpen ? "show" : ""}`} style={{ width: 180 }}>
-                    <div className="upload-opt" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); fileRef.current?.click(); }} onMouseDown={prevent} onTouchStart={prevent}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>Upload file</div>
-                    <div className="upload-opt" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); imgRef.current?.click(); }} onMouseDown={prevent} onTouchStart={prevent}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>Upload image</div>
-                    <div className={`upload-opt ${canvasOn ? "on" : ""}`} onClick={(e) => { e.stopPropagation(); setCanvasOn(!canvasOn); setMenuOpen(false); }} onMouseDown={prevent} onTouchStart={prevent}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{canvasOn && (<span className="cv-cross" onClick={(e) => { e.stopPropagation(); setCanvasOn(false); setMenuOpen(false); }} onMouseDown={prevent} onTouchStart={prevent}>×</span>)}</div>
+                    <div className="upload-opt" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); fileRef.current?.click(); }} onMouseDown={prevent}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>Upload file</div>
+                    <div className="upload-opt" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); imgRef.current?.click(); }} onMouseDown={prevent}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>Upload image</div>
+                    <div className={`upload-opt ${canvasOn ? "on" : ""}`} onClick={(e) => { e.stopPropagation(); setCanvasOn(!canvasOn); setMenuOpen(false); }} onMouseDown={prevent}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{canvasOn && (<span className="cv-cross" onClick={(e) => { e.stopPropagation(); setCanvasOn(false); setMenuOpen(false); }}>×</span>)}</div>
                   </div>
                 </div>
               )}
@@ -97,13 +73,15 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
                 <div className={`pop-menu ${modelMenuOpen ? "show" : ""}`}>
                   {CHAT_MODELS.map((id) => {
                     const locked = isGuest && id !== "thinking";
-                    const isDeepThinkUnavailable = id === "deepthink";
-                    const isDisabled = locked || isDeepThinkUnavailable;
                     return (
-                      <div key={id} className={`model-item ${isDisabled ? "locked" : ""}`} onClick={(e) => { e.stopPropagation(); if (isDeepThinkUnavailable) return; pickModel(id); }} onMouseDown={prevent} onTouchStart={prevent}>
-                        {activeModel === id && !isDisabled ? (<svg viewBox="0 0 24 24" fill="none" className="model-check" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>) : isDisabled ? (<span dangerouslySetInnerHTML={{ __html: lockSvg }} />) : (<div style={{ width: 15, flexShrink: 0 }} />)}
+                      <div key={id} className={`model-item ${locked ? "locked" : ""}`} onClick={(e) => { e.stopPropagation(); pickModel(id); }}>
+                        {activeModel === id && !locked ? (<svg viewBox="0 0 24 24" fill="none" className="model-check" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>) : locked ? (<span dangerouslySetInnerHTML={{ __html: lockSvg }} />) : (<div style={{ width: 15, flexShrink: 0 }} />)}
                         <div className="model-item-content">
-                          <span className="model-title">{MODELS[id].name}{isDeepThinkUnavailable && <span className="beta-tag">Coming soon</span>}{locked && !isDeepThinkUnavailable && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}</span>
+                          <span className="model-title">
+                            {MODELS[id].name}
+                            {id === "deepthink" && <span className="beta-tag">Coming soon</span>}
+                            {locked && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}
+                          </span>
                           <span className="model-desc">{MODELS[id].desc}</span>
                         </div>
                       </div>
@@ -113,7 +91,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
               </div>
             </div>
             <div className="action-right">
-              {canvasOn && !isDeepThink && (<button type="button" className="cv-pill" onClick={() => openFilesList()} onMouseDown={prevent} onTouchStart={prevent}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{fileCount > 0 ? ` · ${fileCount}` : ""}</button>)}
+              {canvasOn && !isDeepThink && (<button type="button" className="cv-pill" onClick={() => openFilesList()}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{fileCount > 0 ? ` · ${fileCount}` : ""}</button>)}
               <button type="button" className={`send-btn ${showStop ? "stop" : ""} ${showMic ? (listening ? "mic listening" : "mic") : ""}`} onClick={mainAction} aria-label={showStop ? "Stop" : hasText ? "Send" : "Voice input"}>
                 {showStop ? (<svg width="15" height="15" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>) : hasText ? (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>) : (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" /><path d="M19 10v2a7 7 0 01-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>)}
               </button>
