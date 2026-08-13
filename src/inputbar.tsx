@@ -73,6 +73,8 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
                 <div className={`pop-menu ${modelMenuOpen ? "show" : ""}`}>
                   {CHAT_MODELS.map((id) => {
                     const locked = isGuest && id !== "thinking";
+                    // For DeepThink we don't show "Sign in" – only "Coming soon"
+                    const showSignIn = locked && id !== "deepthink";
                     return (
                       <div key={id} className={`model-item ${locked ? "locked" : ""}`} onClick={(e) => { e.stopPropagation(); pickModel(id); }}>
                         {activeModel === id && !locked ? (<svg viewBox="0 0 24 24" fill="none" className="model-check" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>) : locked ? (<span dangerouslySetInnerHTML={{ __html: lockSvg }} />) : (<div style={{ width: 15, flexShrink: 0 }} />)}
@@ -80,7 +82,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
                           <span className="model-title">
                             {MODELS[id].name}
                             {id === "deepthink" && <span className="beta-tag">Coming soon</span>}
-                            {locked && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}
+                            {showSignIn && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}
                           </span>
                           <span className="model-desc">{MODELS[id].desc}</span>
                         </div>
