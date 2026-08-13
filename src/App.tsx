@@ -3,12 +3,11 @@ import {
   THINK_SEP, IMAGINE_URL, DEEPTHINK_URL, rid, ChatMessage,
   useAuthStore, useUIStore, useChatStore, useUsageStore,
   createChat, insertMessage, askGeminiStream, buildPrompt, runDailyMemorySync,
-  stripObs, extractObs, saveObservation,
 } from "./core";
 import { CanvasPanel, useCanvasStore } from "./canvas";
 import { globalCSS, layerCSS } from "./styles";
 import { MessageList, PendingAttachment } from "./ui";
-import { ChatHeader, MenuDrawer, AuthScreen, SettingsPage, LoadingScreen, DeepThinkLayer, MemoriesPage, useImagineStore } from "./panels";
+import { ChatHeader, MenuDrawer, AuthScreen, SettingsPage, MemoriesPage, LoadingScreen, DeepThinkLayer, useImagineStore } from "./panels";
 import { ChatInputBar } from "./inputbar";
 
 const CHAIN: Record<string, string[]> = {
@@ -28,20 +27,51 @@ export default function App() {
 
   useEffect(() => { useAuthStore.getState().init(); }, []);
   useEffect(() => { const t = setTimeout(() => setLoading(false), 7000); return () => clearTimeout(t); }, []);
+  
+  // Daily memory sync: Catch-up on load + exact midnight UTC timer
   useEffect(() => {
-    const root = document.documentElement;
-    root.style.setProperty('--font-scale', fontScale);
-  }, [fontScale]);
-  useEffect(() => { if (session?.user?.id) runDailyMemorySync(); }, [session]);
+    if (!session?.user?.id) return;
+    runDailyMemorySync(); // catch-up for today if missed
+
+    const now = new Date();
+    const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
+    const msUntilMidnight = tomorrow.getTime() - now.getTime();
+
+    const midnightTimer = setTimeout(() => {
+      runDailyMemorySync();
+      // Schedule every 24h after that
+      const dailyInterval = setInterval(runDailyMemorySync, 24 * 60 * 60 * 1000);
+      return () => clearInterval(dailyInterval);
+    }, msUntilMidnight);
+
+    return () => clearTimeout(midnightTimer);
+  }, [session?.user?.id]);
 
   useEffect(() => {
-    const h = (e: MessageEvent) => { if (e.origin !== "https://quix-deepthink.lovable.app") return; const d = e.data || {}; if (d.type === "deepthink:started") setDtRunning(true); if (d.type === "deepthink:complete" || d.type === "deepthink:stopped") setDtRunning(false); if (d.type === "deepthink:ready") setDtRunning(!!d.running); };
+    const h = (e: MessageEvent) => { 
+      if (e.origin !== "https://quix-deepthink.lovable.app") return; 
+      const d = e.data || {}; 
+      if (d.type === "deepthink:started") setDtRunning(true); 
+      if (d.type === "deepthink:complete" || d.type === "deepthink:stopped") setDtRunning(false); 
+      if (d.type === "deepthink:ready") setDtRunning(!!d.running); 
+    };
     window.addEventListener("message", h);
     return () => window.removeEventListener("message", h);
   }, []);
 
   const postToDeepThink = (msg: any) => { const cw = dtFrameRef.current?.contentWindow; if (cw) cw.postMessage(msg, DEEPTHINK_URL); };
-  const handleDeepThinkSend = (text: string) => { const usage = useUsageStore.getState(); const rem = usage.remaining("deepthink"); if (rem <= 0) { const fallback = usage.resolve("deepthink"); if (fallback) setActiveModel(fallback); else useUIStore.getState().openAuth(); return; } usage.consume("deepthink"); postToDeepThink({ type: "deepthink:ask", question: text }); };
+  const handleDeepThinkSend = (text: string) => { 
+    const usage = useUsageStore.getState(); 
+    const rem = usage.remaining("deepthink"); 
+    if (rem <= 0) { 
+      const fallback = usage.resolve("deepthink"); 
+      if (fallback) setActiveModel(fallback); 
+      else useUIStore.getState().openAuth(); 
+      return; 
+    } 
+    usage.consume("deepthink"); 
+    postToDeepThink({ type: "deepthink:ask", question: text }); 
+  };
   const handleDeepThinkStop = () => { postToDeepThink({ type: "deepthink:stop" }); };
 
   const handleSend = async (text: string, attachments: PendingAttachment[]) => {
@@ -59,7 +89,14 @@ export default function App() {
     const aiId = rid();
     if (startModel !== activeModel) setActiveModel(startModel);
     let chatId = useChatStore.getState().currentChatId;
-    if (sessNow) { if (!chatId) { const title = text.slice(0, 40) || "New Chat"; chatId = await createChat(title); if (chatId) useChatStore.getState().setCurrentChat(chatId, title); } if (chatId) insertMessage(chatId, userMessage); }
+    if (sessNow) { 
+      if (!chatId) { 
+        const title = text.slice(0, 40) || "New Chat"; 
+        chatId = await createChat(title); 
+        if (chatId) useChatStore.getState().setCurrentChat(chatId, title); 
+      } 
+      if (chatId) insertMessage(chatId, userMessage); 
+    }
     addMessage(userMessage);
     addMessage({ id: aiId, role: "ai", model: startModel, content: "", thoughts: "", createdAt: Date.now(), status: "thinking" } as any);
     setIsSending(true);
@@ -87,18 +124,23 @@ export default function App() {
         onThoughts: () => {},
         onText: (t) => {
           const idx = t.indexOf(THINK_SEP);
-          if (idx > -1) { const tt = freezeThink(); updateMessage(aiId, { thoughts: t.slice(0, idx), content: stripObs(t.slice(idx + THINK_SEP.length).replace(/^\n+/, "")), status: "streaming", ...(tt != null ? { thinkTime: tt } : {}) } as any); }
+          if (idx > -1) { 
+            const tt = freezeThink(); 
+            updateMessage(aiId, { thoughts: t.slice(0, idx), content: t.slice(idx + THINK_SEP.length).replace(/^\n+/, ""), status: "streaming", ...(tt != null ? { thinkTime: tt } : {}) } as any); 
+          }
           else { updateMessage(aiId, { thoughts: t, status: "thinking" }); }
         },
         onDone: (r) => {
           const raw = r.text || "";
-          const obs = extractObs(raw) || `User asked: "${text.slice(0, 140)}"`;
-          saveObservation(obs);
-          const full = stripObs(raw);
+          const full = raw;
           const idx = full.indexOf(THINK_SEP);
           const tt = freezeThink();
-          if (idx > -1) { updateMessage(aiId, { thoughts: full.slice(0, idx), content: full.slice(idx + THINK_SEP.length).replace(/^\n+/, "") || "Done.", sources: r.sources, status: "streaming", doneStreaming: true, ...(tt != null ? { thinkTime: tt } : {}) } as any); }
-          else if (full) { updateMessage(aiId, { content: full, sources: r.sources, status: "streaming", doneStreaming: true, ...(tt != null ? { thinkTime: tt } : {}) } as any); }
+          if (idx > -1) { 
+            updateMessage(aiId, { thoughts: full.slice(0, idx), content: full.slice(idx + THINK_SEP.length).replace(/^\n+/, "") || "Done.", sources: r.sources, status: "streaming", doneStreaming: true, ...(tt != null ? { thinkTime: tt } : {}) } as any); 
+          }
+          else if (full) { 
+            updateMessage(aiId, { content: full, sources: r.sources, status: "streaming", doneStreaming: true, ...(tt != null ? { thinkTime: tt } : {}) } as any); 
+          }
           else { attempt(i + 1); }
         },
       }).catch(() => { attempt(i + 1); });
@@ -110,19 +152,33 @@ export default function App() {
     <div style={{ height: "100dvh", background: "#000", color: "#fff", overflow: "hidden", position: "relative" }}>
       <style>{globalCSS}</style>
       <style>{layerCSS}</style>
+      
+      {/* Fixed UI elements (outside scale wrapper to prevent cutoff/overflow) */}
       <ChatHeader hidden={false} />
       <MenuDrawer hidden={false} />
       <AuthScreen />
       <SettingsPage />
       <MemoriesPage />
       <CanvasPanel />
-      <div className={`qx-layer ${viewMode === "chat" ? "center" : "left"}`}>
-        {isDeepThink ? (<DeepThinkLayer frameRef={dtFrameRef} />) : (<MessageList />)}
-        <ChatInputBar onSend={handleSend} onDeepThinkSend={handleDeepThinkSend} onDeepThinkStop={handleDeepThinkStop} isDeepThink={isDeepThink} dtRunning={dtRunning} />
+
+      {/* Scaled content wrapper (safe resizing without layout breakage) */}
+      <div style={{
+        transform: `scale(${fontScale})`,
+        transformOrigin: 'top center',
+        width: `${100 / fontScale}%`,
+        height: `calc(100dvh / ${fontScale})`,
+        position: 'relative',
+        overflow: 'hidden'
+      }}>
+        <div className={`qx-layer ${viewMode === "chat" ? "center" : "left"}`}>
+          {isDeepThink ? (<DeepThinkLayer frameRef={dtFrameRef} />) : (<MessageList />)}
+          <ChatInputBar onSend={handleSend} onDeepThinkSend={handleDeepThinkSend} onDeepThinkStop={handleDeepThinkStop} isDeepThink={isDeepThink} dtRunning={dtRunning} />
+        </div>
+        <div className={`qx-layer ${viewMode === "imagine" ? "center" : "right"}`}>
+          <iframe key={imagineNonce} src={IMAGINE_URL} title="Imagine 1.5" />
+        </div>
       </div>
-      <div className={`qx-layer ${viewMode === "imagine" ? "center" : "right"}`}>
-        <iframe key={imagineNonce} src={IMAGINE_URL} title="Imagine 1.5" />
-      </div>
+      
       {loading && <LoadingScreen />}
     </div>
   );
