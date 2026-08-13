@@ -28,7 +28,10 @@ export default function App() {
 
   useEffect(() => { useAuthStore.getState().init(); }, []);
   useEffect(() => { const t = setTimeout(() => setLoading(false), 7000); return () => clearTimeout(t); }, []);
-  useEffect(() => { (document.documentElement.style as any).zoom = String(fontScale); }, [fontScale]);
+  useEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty('--font-scale', fontScale);
+  }, [fontScale]);
   useEffect(() => { if (session?.user?.id) runDailyMemorySync(); }, [session]);
 
   useEffect(() => {
