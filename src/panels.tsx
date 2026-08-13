@@ -100,15 +100,58 @@ export function MenuDrawer({ hidden }: { hidden?: boolean }) {
 export function AuthScreen() {
   const { authOpen, closeAuth } = useUIStore();
   const [tab, setTab] = useState<"signin" | "signup">("signin");
-  const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [pass, setPass] = useState(""); const [confirm, setConfirm] = useState("");
-  const [err, setErr] = useState(""); const [notice, setNotice] = useState("");
-  const submit = async () => {
-    const sb = supabase(); if (!sb) { setErr("Auth not configured. Add Supabase env keys."); return; }
-    setErr(""); setNotice("");
-    if (tab === "signup" && pass !== confirm) { setErr("Passwords don't match."); return; }
-    if (tab === "signin") { const { error } = await sb.auth.signInWithPassword({ email, password: pass }); if (error) setErr(error.message); else closeAuth(); }
-    else { const { data, error } = await sb.auth.signUp({ email, password: pass, options: { data: { full_name: name } } }); if (error) setErr(error.message); else if (!data?.session) { setNotice("Account created. Check your email and tap the confirmation link, then come back and sign in."); setTab("signin"); setPass(""); setConfirm(""); } else closeAuth(); }
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [err, setErr] = useState("");
+  const [notice, setNotice] = useState("");
+
+  // Clear all fields when auth opens or tab changes
+  const clearFields = () => {
+    setName("");
+    setEmail("");
+    setPass("");
+    setConfirm("");
+    setErr("");
+    setNotice("");
   };
+
+  // When auth opens, clear fields
+  useEffect(() => {
+    if (authOpen) {
+      clearFields();
+    }
+  }, [authOpen]);
+
+  // Also clear when tab changes
+  const handleTabChange = (newTab: "signin" | "signup") => {
+    setTab(newTab);
+    clearFields();
+  };
+
+  const submit = async () => {
+    const sb = supabase();
+    if (!sb) { setErr("Auth not configured. Add Supabase env keys."); return; }
+    setErr("");
+    setNotice("");
+    if (tab === "signup" && pass !== confirm) { setErr("Passwords don't match."); return; }
+    if (tab === "signin") {
+      const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+      if (error) setErr(error.message);
+      else closeAuth();
+    } else {
+      const { data, error } = await sb.auth.signUp({ email, password: pass, options: { data: { full_name: name } } });
+      if (error) setErr(error.message);
+      else if (!data?.session) {
+        setNotice("Account created. Check your email and tap the confirmation link, then come back and sign in.");
+        setTab("signin");
+        setPass("");
+        setConfirm("");
+      } else closeAuth();
+    }
+  };
+
   return (
     <>
       <style>{auCSS}</style>
@@ -117,27 +160,27 @@ export function AuthScreen() {
         <div className="auth-logo">QUIX</div>
         <div className="auth-tagline">Your AI. Your space.</div>
         <div className="auth-tabs">
-          <button className={`auth-tab ${tab === "signin" ? "active" : ""}`} onClick={() => { setTab("signin"); setNotice(""); }}>Sign in</button>
-          <button className={`auth-tab ${tab === "signup" ? "active" : ""}`} onClick={() => { setTab("signup"); setNotice(""); }}>Sign up</button>
+          <button className={`auth-tab ${tab === "signin" ? "active" : ""}`} onClick={() => handleTabChange("signin")}>Sign in</button>
+          <button className={`auth-tab ${tab === "signup" ? "active" : ""}`} onClick={() => handleTabChange("signup")}>Sign up</button>
         </div>
         {notice && <div className="auth-notice" style={{ marginBottom: 12, width: "100%", maxWidth: 340 }}>{notice}</div>}
         {tab === "signin" ? (
           <div className="auth-form">
-            <input className="auth-field" type="email" placeholder="Email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <input className="auth-field" type="password" placeholder="Password" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
+            <input className="auth-field" type="email" placeholder="Email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input className="auth-field" type="password" placeholder="Password" autoComplete="off" value={pass} onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
             {err && <div className="auth-err">{err}</div>}
             <button className="auth-submit" onClick={submit}>Sign in</button>
-            <div className="auth-switch">Don't have an account? <span onClick={() => setTab("signup")}>Sign up</span></div>
+            <div className="auth-switch">Don't have an account? <span onClick={() => handleTabChange("signup")}>Sign up</span></div>
           </div>
         ) : (
           <div className="auth-form">
-            <input className="auth-field" type="text" placeholder="Full name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
-            <input className="auth-field" type="email" placeholder="Email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <input className="auth-field" type="password" placeholder="Password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} />
-            <input className="auth-field" type="password" placeholder="Confirm password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
+            <input className="auth-field" type="text" placeholder="Full name" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} />
+            <input className="auth-field" type="email" placeholder="Email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input className="auth-field" type="password" placeholder="Password" autoComplete="off" value={pass} onChange={(e) => setPass(e.target.value)} />
+            <input className="auth-field" type="password" placeholder="Confirm password" autoComplete="off" value={confirm} onChange={(e) => setConfirm(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
             {err && <div className="auth-err">{err}</div>}
             <button className="auth-submit" onClick={submit}>Create account</button>
-            <div className="auth-switch">Already have an account? <span onClick={() => setTab("signin")}>Sign in</span></div>
+            <div className="auth-switch">Already have an account? <span onClick={() => handleTabChange("signin")}>Sign in</span></div>
           </div>
         )}
       </div>
