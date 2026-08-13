@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import { MODELS, CHAT_MODELS, APP_VERSION, useAuthStore, useUIStore, useChatStore, useProfileStore, useMemoryStore, useUsageStore, supabase, fetchChats, fetchMessages, renameChat, deleteChat } from "./core";
 import { useCanvasStore } from "./canvas";
-import { ORB_COLORS, hdCSS, dwCSS, auCSS, stCSS, ldCSS, dtCSS, vcCSS } from "./styles";
+import { ORB_COLORS, hdCSS, dwCSS, auCSS, stCSS, mmCSS, ldCSS, dtCSS, vcCSS } from "./styles";
 
 export const usePinStore = create<any>((set, get) => ({
   pinned: (() => { try { return JSON.parse(localStorage.getItem("quix_pinned_v1") || "[]"); } catch { return []; } })(),
@@ -87,7 +87,7 @@ export function MenuDrawer({ hidden }: { hidden?: boolean }) {
             {session ? (<div className="user-row"><span className="user-email">{session.user.email || "Signed in"}</span><button className="signout-btn" onClick={(e) => shimmerThen(e, async () => { await signOut(); resetChat(); })}>Sign out</button></div>) : (<button className="signin-btn shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openAuthFromDrawer(), 150); })}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></svg>Sign in</button>)}
             <div className="profile-row">
               <button className="signin-btn shimmer-btn" style={{ flex: 1 }} onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>Your profile</button>
-              <button className="settings-circle shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })} aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
+              <button className="settings-circle shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })} aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82v.01a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
             </div>
           </div>
         </div>
@@ -102,6 +102,8 @@ export function AuthScreen() {
   const [tab, setTab] = useState<"signin" | "signup">("signin");
   const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [pass, setPass] = useState(""); const [confirm, setConfirm] = useState("");
   const [err, setErr] = useState(""); const [notice, setNotice] = useState("");
+  // wipe all fields every time the auth screen opens — no leftover creds, ever
+  useEffect(() => { if (authOpen) { setTab("signin"); setName(""); setEmail(""); setPass(""); setConfirm(""); setErr(""); setNotice(""); } }, [authOpen]);
   const submit = async () => {
     const sb = supabase(); if (!sb) { setErr("Auth not configured. Add Supabase env keys."); return; }
     setErr(""); setNotice("");
@@ -123,16 +125,16 @@ export function AuthScreen() {
         {notice && <div className="auth-notice" style={{ marginBottom: 12, width: "100%", maxWidth: 340 }}>{notice}</div>}
         {tab === "signin" ? (
           <div className="auth-form">
-            <input className="auth-field" type="email" placeholder="Email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <input className="auth-field" type="password" placeholder="Password" autoComplete="current-password" value={pass} onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
+            <input className="auth-field" type="email" placeholder="Email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input className="auth-field" type="password" placeholder="Password" autoComplete="off" value={pass} onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
             {err && <div className="auth-err">{err}</div>}
             <button className="auth-submit" onClick={submit}>Sign in</button>
             <div className="auth-switch">Don't have an account? <span onClick={() => setTab("signup")}>Sign up</span></div>
           </div>
         ) : (
           <div className="auth-form">
-            <input className="auth-field" type="text" placeholder="Full name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} />
-            <input className="auth-field" type="email" placeholder="Email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input className="auth-field" type="text" placeholder="Full name" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} />
+            <input className="auth-field" type="email" placeholder="Email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
             <input className="auth-field" type="password" placeholder="Password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} />
             <input className="auth-field" type="password" placeholder="Confirm password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
             {err && <div className="auth-err">{err}</div>}
@@ -146,15 +148,15 @@ export function AuthScreen() {
 }
 
 export function SettingsPage() {
-  const { settingsOpen, closeSettings, fontScale, setFontScale } = useUIStore();
+  const { settingsOpen, closeSettings, fontScale, setFontScale, openMemories } = useUIStore();
   const { profile, setProfile } = useProfileStore();
   const { session, signOut } = useAuthStore();
   const { resetChat } = useChatStore();
-  const { memories, loadFor, addMemory, removeMemory } = useMemoryStore();
+  const memories = useMemoryStore((s) => s.memories);
+  const loadFor = useMemoryStore((s) => s.loadFor);
   const usage = useUsageStore((s) => s.usage);
   const limitFor = useUsageStore((s) => s.limitFor);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [memInput, setMemInput] = useState("");
   const uid = session?.user?.id ?? null;
   useEffect(() => { if (uid) loadFor(uid); }, [uid, loadFor]);
   useEffect(() => { if (session?.user?.email && !profile.email) setProfile({ email: session.user.email }); const meta = session?.user?.user_metadata as any; if (meta?.full_name && !profile.name) setProfile({ name: meta.full_name }); }, [session]);
@@ -175,7 +177,6 @@ export function SettingsPage() {
             <input className="set-field" type="text" placeholder="Name" value={profile.name} onChange={(e) => setProfile({ name: e.target.value })} />
             <input className="set-field" type="text" placeholder="Username" value={profile.username} onChange={(e) => setProfile({ username: e.target.value })} />
             <input className="set-field" type="email" placeholder="Email" value={profile.email} onChange={(e) => setProfile({ email: e.target.value })} />
-            <input className="set-field" type="date" value={profile.dob} onChange={(e) => setProfile({ dob: e.target.value })} />
           </div>
           <div className="set-section">
             <div className="set-label">Daily message limits</div>
@@ -185,11 +186,10 @@ export function SettingsPage() {
           {uid && (
             <div className="set-section">
               <div className="set-label">Memory</div>
-              <div className="mem-input-row">
-                <input className="set-field" type="text" placeholder="Teach Quix something about you..." value={memInput} onChange={(e) => setMemInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && memInput.trim()) { addMemory(uid, memInput); setMemInput(""); } }} />
-                <button className="mem-add" onClick={() => { if (memInput.trim()) { addMemory(uid, memInput); setMemInput(""); } }}>+</button>
-              </div>
-              {memories.length > 0 ? (memories.map((m: any) => (<div className="mem-item" key={m.id}><span>{m.text}</span><button onClick={() => removeMemory(uid, m.id)}>×</button></div>))) : (<div className="mem-empty">No memories yet. Quix also writes automatic memories from your last 24h of chats at every midnight UTC.</div>)}
+              <button className="signin-btn shimmer-btn" onClick={(e) => shimmerThen(e, () => openMemories())}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z" /></svg>
+                Memories{memories.length > 0 ? ` · ${memories.length}` : ""}
+              </button>
             </div>
           )}
           <div className="set-section">
@@ -202,6 +202,41 @@ export function SettingsPage() {
           </div>
           {uid && (<div className="set-section"><button className="signout-big" onClick={async () => { await signOut(); resetChat(); }}>Sign out</button></div>)}
           <div className="watermark">Quix · {APP_VERSION}</div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function MemoriesPage() {
+  const { memoriesOpen, closeMemories } = useUIStore();
+  const { session } = useAuthStore();
+  const { memories, loadFor, addMemory, removeMemory } = useMemoryStore();
+  const [memInput, setMemInput] = useState("");
+  const uid = session?.user?.id ?? null;
+  useEffect(() => { if (uid && memoriesOpen) loadFor(uid); }, [uid, memoriesOpen, loadFor]);
+  return (
+    <>
+      <style>{stCSS}</style>
+      <style>{mmCSS}</style>
+      <div id="memories-screen" className={memoriesOpen ? "show" : ""}>
+        <div className="set-header"><button className="set-back" onClick={closeMemories} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Memories</div></div>
+        <div className="set-body">
+          {uid ? (
+            <>
+              <div className="set-section">
+                <div className="set-label">Teach Quix</div>
+                <div className="mem-input-row">
+                  <input className="set-field" type="text" placeholder="Teach Quix something about you..." value={memInput} onChange={(e) => setMemInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && memInput.trim()) { addMemory(uid, memInput); setMemInput(""); } }} />
+                  <button className="mem-add" onClick={() => { if (memInput.trim()) { addMemory(uid, memInput); setMemInput(""); } }}>+</button>
+                </div>
+              </div>
+              <div className="set-section">
+                <div className="set-label">All memories ({memories.length})</div>
+                {memories.length > 0 ? (memories.map((m: any) => (<div className="mem-item" key={m.id}><span>{m.text}</span><button onClick={() => removeMemory(uid, m.id)}>×</button></div>))) : (<div className="mem-empty">No memories yet. Quix also writes automatic memories from your last 24h of chats at every midnight UTC.</div>)}
+              </div>
+            </>
+          ) : (<div className="mem-empty">Sign in to use memories.</div>)}
         </div>
       </div>
     </>
@@ -259,8 +294,4 @@ export function VoiceCallLayer({ onExit }: { onExit: () => void }) {
       <style>{vcCSS}</style>
       <div className="voice-call-layer">
         <button className="voice-call-exit" onClick={onExit} aria-label="Exit voice call"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
-        <iframe className="voice-call-frame" src="https://quix-voice.vercel.app/" title="Voice Call" allow="microphone; camera" allowUserMedia />
-      </div>
-    </>
-  );
-}
+        <iframe className="voice-call-frame" src="https://quix-voice.vercel.app/" title="Voice Call" allow="microphone; camera" allowUser
