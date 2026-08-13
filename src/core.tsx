@@ -23,7 +23,7 @@ export const MODELS: Record<string, { name: string; desc: string; key: string }>
   lite: { name: "Quix 3 Lite", desc: "Instant replies", key: "VITE_GEMINI_LITE_API_KEY" },
   coder: { name: "Quix 3 Coder", desc: "Build apps and sites", key: "VITE_GEMINI_CODER_API_KEY" },
   thinking: { name: "Quix 3.1 Thinking", desc: "Advanced reasoning", key: "VITE_GEMINI_THINKING_API_KEY" },
-  deepthink: { name: "DeepThink", desc: "Deep research & reasoning", key: "VITE_GEMINI_DEEPTHINK_API_KEY" },
+  deepthink: { name: "DeepThink", desc: "5 minutes of deep research and reasoning", key: "VITE_GEMINI_DEEPTHINK_API_KEY" },
 };
 
 const env = () => (import.meta as any).env || {};
@@ -92,7 +92,12 @@ export const useChatStore = create<any>((set) => ({
 const PROF_KEY = "quix_profile_v1";
 export const useProfileStore = create<any>((set) => ({
   profile: (() => { try { const raw = localStorage.getItem(PROF_KEY); if (raw) return { name: "", username: "", email: "", dob: "", avatar: null, ...JSON.parse(raw) }; } catch {} return { name: "", username: "", email: "", dob: "", avatar: null }; })(),
-  setProfile: (patch: any) => set((s: any) => { const profile = { ...s.profile, ...patch }; try { localStorage.setItem(PROF_KEY, JSON.stringify(profile)); } catch {} return { profile }; }),
+  setProfile: (patch: any) => set((s: any) => {
+    const profile = { ...s.profile, ...patch };
+    try { localStorage.setItem(PROF_KEY, JSON.stringify(profile)); } catch {}
+    saveProfileToDB(profile);
+    return { profile };
+  }),
 }));
 
 /* ================= USAGE LIMITS (guest-aware) ================= */
@@ -168,6 +173,14 @@ export async function fetchChats(): Promise<any[]> { if (!sb) return []; try { c
 export async function fetchMessages(chatId: string): Promise<ChatMessage[]> { if (!sb) return []; try { const { data } = await sb.from("messages").select("*").eq("chat_id", chatId).order("created_at", { ascending: true }); return (data || []).map((m: any) => ({ id: m.id, role: m.role, model: m.model, content: m.content, createdAt: new Date(m.created_at).getTime(), status: "done" })); } catch { return []; } }
 export async function renameChat(id: string, title: string) { if (!sb) return; try { await sb.from("chats").update({ title }).eq(id).catch(() => {}); } catch {} }
 export async function deleteChat(id: string) { if (!sb) return; try { await sb.from("chats").delete().eq("id", id); } catch {} }
+
+export async function saveProfileToDB(profile: any) {
+  const session = useAuthStore.getState().session;
+  if (!session?.user?.id || !sb) return;
+  try {
+    await sb.from("profiles").upsert({ user_id: session.user.id, ...profile }, { onConflict: 'user_id' });
+  } catch {}
+}
 
 /* ================= GEMINI ================= */
 let controller: AbortController | null = null;
