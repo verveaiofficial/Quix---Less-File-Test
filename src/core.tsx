@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.2.0";
+export const APP_VERSION = "v2.3.0";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -60,12 +60,14 @@ export const useAuthStore = create<any>((set) => ({
 const FONT_KEY = "quix_font_scale";
 function loadScale(): number { try { const v = parseFloat(localStorage.getItem(FONT_KEY) || "1"); return isNaN(v) ? 1 : v; } catch { return 1; } }
 export const useUIStore = create<any>((set, get) => ({
-  drawerOpen: false, authOpen: false, settingsOpen: false, viewMode: "chat", fontScale: loadScale(), drawerReturn: false,
+  drawerOpen: false, authOpen: false, settingsOpen: false, memoriesOpen: false, viewMode: "chat", fontScale: loadScale(), drawerReturn: false,
   setDrawerOpen: (v: boolean) => set({ drawerOpen: v }),
   openAuth: () => set({ authOpen: true }),
   openSettings: () => set({ settingsOpen: true }),
   openAuthFromDrawer: () => set({ authOpen: true, drawerReturn: true }),
   openSettingsFromDrawer: () => set({ settingsOpen: true, drawerReturn: true }),
+  openMemories: () => set({ memoriesOpen: true }),
+  closeMemories: () => set({ memoriesOpen: false }),
   closeAuth: () => { const r = get().drawerReturn; set({ authOpen: false, drawerReturn: false }); if (r) setTimeout(() => set({ drawerOpen: true }), 250); },
   closeSettings: () => { const r = get().drawerReturn; set({ settingsOpen: false, drawerReturn: false }); if (r) setTimeout(() => set({ drawerOpen: true }), 250); },
   setViewMode: (v: string) => set({ viewMode: v }),
@@ -125,6 +127,8 @@ export const useMemoryStore = create<any>((set, get) => ({
 }));
 
 // runs once per UTC day; summarizes the user's messages from the LAST 24 HOURS into memories
+// FIXED: messages table has NO user_id column (RLS already scopes rows to the owner),
+// and it only marks the day as done when the sync actually succeeds.
 export async function runDailyMemorySync() {
   const session = useAuthStore.getState().session;
   if (!session?.user?.id || !sb) return;
@@ -134,18 +138,19 @@ export async function runDailyMemorySync() {
   if (localStorage.getItem(key) === today) return;
   try {
     const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-    const { data: msgs } = await sb.from("messages").select("role,content,created_at").eq("user_id", uid).gte("created_at", since).order("created_at", { ascending: true }).limit(60);
-    const userLines = (msgs || []).filter((m: any) => m.role === "user").map((m: any) => m.content);
+    const { data: msgs, error } = await sb.from("messages").select("role,content,created_at").gte("created_at", since).order("created_at", { ascending: true }).limit(60);
+    if (error || !msgs) return;
+    const userLines = msgs.filter((m: any) => m.role === "user").map((m: any) => m.content);
     if (!userLines.length) { localStorage.setItem(key, today); return; }
     let summary = "";
     await askGeminiStream("flash", "Below are this user's messages from the last 24 hours. Output 1-5 short bullet lines, each a standalone memory sentence about their preferences, mood, projects or facts. No intro, no markdown.\n\n" + userLines.join("\n").slice(0, 6000), { search: false }, { onThoughts: () => {}, onText: (t) => { summary = t; }, onDone: (r) => { summary = r.text; } });
     const lines = summary.split("\n").map((l: string) => l.replace(/^[\s•\-–\d.)]+/, "").trim()).filter((l: string) => l.length > 8);
     for (const line of lines.slice(0, 5)) await useMemoryStore.getState().addAuto(uid, line);
+    localStorage.setItem(key, today);
   } catch {}
-  localStorage.setItem(key, today);
 }
 
-/* ================= OBSERVATIONS (training data) ================= */
+/* ================= OBSERVATIONS (local only — observations table was DROPPED, never write to it) ================= */
 const OBS_LOCAL_KEY = "quix_observations";
 export function stripObs(t: string): string { const i = t.indexOf(OBS_TAG); return i >= 0 ? t.slice(0, i) : t; }
 export function extractObs(t: string): string { const i = t.indexOf(OBS_TAG); return i >= 0 ? t.slice(i + OBS_TAG.length).trim() : ""; }
@@ -154,8 +159,6 @@ export async function saveObservation(summary: string) {
   const s = summary.trim();
   if (!s) return;
   saveObservationLocal(s);
-  const sess = useAuthStore.getState().session;
-  if (sess?.user?.id && sb) { try { await sb.from("observations").insert({ user_id: sess.user.id, summary: s }); } catch {} }
 }
 
 /* ================= HISTORY (Supabase only) ================= */
@@ -163,7 +166,7 @@ export async function createChat(title: string): Promise<string | null> { if (!s
 export async function insertMessage(chatId: string, msg: ChatMessage) { if (!sb) return; try { await sb.from("messages").insert({ id: msg.id, chat_id: chatId, role: msg.role, model: msg.model, content: msg.content, status: "done", kind: "text" }); await sb.from("chats").update({ updated_at: new Date().toISOString() }).eq("id", chatId); } catch {} }
 export async function fetchChats(): Promise<any[]> { if (!sb) return []; try { const { data } = await sb.from("chats").select("*").order("updated_at", { ascending: false }).limit(50); return data || []; } catch { return []; } }
 export async function fetchMessages(chatId: string): Promise<ChatMessage[]> { if (!sb) return []; try { const { data } = await sb.from("messages").select("*").eq("chat_id", chatId).order("created_at", { ascending: true }); return (data || []).map((m: any) => ({ id: m.id, role: m.role, model: m.model, content: m.content, createdAt: new Date(m.created_at).getTime(), status: "done" })); } catch { return []; } }
-export async function renameChat(id: string, title: string) { if (!sb) return; try { await sb.from("chats").update({ title }).eq("id", id); } catch {} }
+export async function renameChat(id: string, title: string) { if (!sb) return; try { await sb.from("chats").update({ title }).eq(id).catch(() => {}); } catch {} }
 export async function deleteChat(id: string) { if (!sb) return; try { await sb.from("chats").delete().eq("id", id); } catch {} }
 
 /* ================= GEMINI ================= */
