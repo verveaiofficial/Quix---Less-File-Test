@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
-import { MODELS, CHAT_MODELS, APP_VERSION, useAuthStore, useUIStore, useChatStore, useProfileStore, useMemoryStore, useUsageStore, supabase, fetchChats, fetchMessages, renameChat, deleteChat } from "./core";
+import { MODELS, CHAT_MODELS, APP_VERSION, useAuthStore, useUIStore, useChatStore, useProfileStore, useMemoryStore, useUsageStore, supabase, fetchChats, fetchMessages, renameChat, deleteChat, saveProfileToDB } from "./core";
 import { useCanvasStore } from "./canvas";
 import { ORB_COLORS, hdCSS, dwCSS, auCSS, stCSS, mmCSS, ldCSS, dtCSS, vcCSS } from "./styles";
 
@@ -169,6 +169,42 @@ export function SettingsPage() {
   const uid = session?.user?.id ?? null;
   useEffect(() => { if (uid) loadFor(uid); }, [uid, loadFor]);
   useEffect(() => { if (session?.user?.email && !profile.email) setProfile({ email: session.user.email }); const meta = session?.user?.user_metadata as any; if (meta?.full_name && !profile.name) setProfile({ name: meta.full_name }); }, [session]);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f || f.size > 1.5 * 1024 * 1024) return;
+
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const size = 256; // Output size
+      canvas.width = size;
+      canvas.height = size;
+
+      let srcX = 0, srcY = 0, srcW = img.width, srcH = img.height;
+      if (img.width > img.height) {
+        srcX = (img.width - img.height) / 2;
+        srcW = img.height;
+      } else {
+        srcY = (img.height - img.width) / 2;
+        srcH = img.width;
+      }
+
+      ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, size, size);
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const reader = new FileReader();
+        reader.onload = () => setProfile({ avatar: String(reader.result || "") });
+        reader.readAsDataURL(blob);
+      }, 'image/jpeg', 0.85);
+    };
+    img.src = URL.createObjectURL(f);
+  };
+
   return (
     <>
       <style>{stCSS}</style>
@@ -179,7 +215,7 @@ export function SettingsPage() {
             <button className="avatar" onClick={() => fileRef.current?.click()}>
               {profile.avatar ? (<img src={profile.avatar} alt="profile" />) : (<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>)}
             </button>
-            <input type="file" accept="image/*" ref={fileRef} style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f || f.size > 1.5 * 1024 * 1024) return; const r = new FileReader(); r.onload = () => setProfile({ avatar: String(r.result || "") }); r.readAsDataURL(f); }} />
+            <input type="file" accept="image/*" ref={fileRef} style={{ display: "none" }} onChange={handleImageUpload} />
           </div>
           <div className="set-section">
             <div className="set-label">Profile</div>
