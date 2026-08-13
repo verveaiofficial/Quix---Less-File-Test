@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
-import { MODELS, CHAT_MODELS, APP_VERSION, useAuthStore, useUIStore, useChatStore, useProfileStore, useMemoryStore, useUsageStore, supabase, fetchChats, fetchMessages, renameChat, deleteChat, saveProfileToDB } from "./core";
+import { MODELS, CHAT_MODELS, APP_VERSION, useAuthStore, useUIStore, useChatStore, useProfileStore, useMemoryStore, useUsageStore, supabase, fetchChats, fetchMessages, renameChat, deleteChat } from "./core";
 import { useCanvasStore } from "./canvas";
-import { ORB_COLORS, hdCSS, dwCSS, auCSS, stCSS, mmCSS, ldCSS, dtCSS, vcCSS } from "./styles";
+import { ORB_COLORS, hdCSS, dwCSS, auCSS, stCSS, memCSS, ldCSS, dtCSS, vcCSS } from "./styles";
 
 export const usePinStore = create<any>((set, get) => ({
   pinned: (() => { try { return JSON.parse(localStorage.getItem("quix_pinned_v1") || "[]"); } catch { return []; } })(),
@@ -87,7 +87,7 @@ export function MenuDrawer({ hidden }: { hidden?: boolean }) {
             {session ? (<div className="user-row"><span className="user-email">{session.user.email || "Signed in"}</span><button className="signout-btn" onClick={(e) => shimmerThen(e, async () => { await signOut(); resetChat(); })}>Sign out</button></div>) : (<button className="signin-btn shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openAuthFromDrawer(), 150); })}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 3h4a2 2 0 012 2v14a2 2 0 01-2 2h-4" /><polyline points="10 17 15 12 10 7" /><line x1="15" y1="12" x2="3" y2="12" /></svg>Sign in</button>)}
             <div className="profile-row">
               <button className="signin-btn shimmer-btn" style={{ flex: 1 }} onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>Your profile</button>
-              <button className="settings-circle shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })} aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82v.01a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
+              <button className="settings-circle shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })} aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
             </div>
           </div>
         </div>
@@ -101,24 +101,18 @@ export function AuthScreen() {
   const { authOpen, closeAuth } = useUIStore();
   const [tab, setTab] = useState<"signin" | "signup">("signin");
   const [name, setName] = useState(""); const [email, setEmail] = useState(""); const [pass, setPass] = useState(""); const [confirm, setConfirm] = useState("");
-  const [err, setErr] = useState(""); const [notice, setNotice] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  // wipe all fields every time the auth screen opens — no leftover creds, ever
-  useEffect(() => { if (authOpen) { setTab("signin"); setName(""); setEmail(""); setPass(""); setConfirm(""); setErr(""); setNotice(""); } }, [authOpen]);
+  const [err, setErr] = useState(""); const [notice, setNotice] = useState(""); const [loading, setLoading] = useState(false);
+  useEffect(() => { if (!authOpen) { setName(""); setEmail(""); setPass(""); setConfirm(""); setErr(""); setNotice(""); setLoading(false); } }, [authOpen]);
   const submit = async () => {
-    setIsSubmitting(true);
-    const sb = supabase(); if (!sb) { setErr("Auth not configured. Add Supabase env keys."); setIsSubmitting(false); return; }
-    setErr(""); setNotice("");
-    if (tab === "signup" && pass !== confirm) { setErr("Passwords don't match."); setIsSubmitting(false); return; }
-    if (tab === "signin") {
-      const { error } = await sb.auth.signInWithPassword({ email, password: pass });
-      setIsSubmitting(false);
-      if (error) setErr(error.message); else closeAuth();
-    } else {
-      const { data, error } = await sb.auth.signUp({ email, password: pass, options: { data: { full_name: name } } });
-      setIsSubmitting(false);
-      if (error) setErr(error.message); else if (!data?.session) { setNotice("Account created. Check your email and tap the confirmation link, then come back and sign in."); setTab("signin"); setPass(""); setConfirm(""); } else closeAuth();
-    }
+    if (loading) return;
+    const sb = supabase(); if (!sb) { setErr("Auth not configured. Add Supabase env keys."); return; }
+    setErr(""); setNotice(""); setLoading(true);
+    try {
+      if (tab === "signup" && pass !== confirm) { setErr("Passwords don't match."); setLoading(false); return; }
+      if (tab === "signin") { const { error } = await sb.auth.signInWithPassword({ email, password: pass }); if (error) setErr(error.message); else closeAuth(); }
+      else { const { data, error } = await sb.auth.signUp({ email, password: pass, options: { data: { full_name: name } } }); if (error) setErr(error.message); else if (!data?.session) { setNotice("Account created. Check your email and tap the confirmation link, then come back and sign in."); setTab("signin"); setPass(""); setConfirm(""); } else closeAuth(); }
+    } catch { setErr("Something went wrong."); }
+    setLoading(false);
   };
   return (
     <>
@@ -137,17 +131,17 @@ export function AuthScreen() {
             <input className="auth-field" type="email" placeholder="Email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
             <input className="auth-field" type="password" placeholder="Password" autoComplete="off" value={pass} onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
             {err && <div className="auth-err">{err}</div>}
-            <button className={`auth-submit ${isSubmitting ? 'shimmer' : ''}`} onClick={submit} disabled={isSubmitting}>Sign in</button>
+            <button className={`auth-submit ${loading ? "shimmer-loading" : ""}`} onClick={submit} disabled={loading}>{loading ? "Signing in..." : "Sign in"}</button>
             <div className="auth-switch">Don't have an account? <span onClick={() => setTab("signup")}>Sign up</span></div>
           </div>
         ) : (
           <div className="auth-form">
             <input className="auth-field" type="text" placeholder="Full name" autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} />
             <input className="auth-field" type="email" placeholder="Email" autoComplete="off" value={email} onChange={(e) => setEmail(e.target.value)} />
-            <input className="auth-field" type="password" placeholder="Password" autoComplete="new-password" value={pass} onChange={(e) => setPass(e.target.value)} />
-            <input className="auth-field" type="password" placeholder="Confirm password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
+            <input className="auth-field" type="password" placeholder="Password" autoComplete="off" value={pass} onChange={(e) => setPass(e.target.value)} />
+            <input className="auth-field" type="password" placeholder="Confirm password" autoComplete="off" value={confirm} onChange={(e) => setConfirm(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") submit(); }} />
             {err && <div className="auth-err">{err}</div>}
-            <button className={`auth-submit ${isSubmitting ? 'shimmer' : ''}`} onClick={submit} disabled={isSubmitting}>Create account</button>
+            <button className={`auth-submit ${loading ? "shimmer-loading" : ""}`} onClick={submit} disabled={loading}>{loading ? "Creating account..." : "Create account"}</button>
             <div className="auth-switch">Already have an account? <span onClick={() => setTab("signin")}>Sign in</span></div>
           </div>
         )}
@@ -161,50 +155,11 @@ export function SettingsPage() {
   const { profile, setProfile } = useProfileStore();
   const { session, signOut } = useAuthStore();
   const { resetChat } = useChatStore();
-  const memories = useMemoryStore((s) => s.memories);
-  const loadFor = useMemoryStore((s) => s.loadFor);
   const usage = useUsageStore((s) => s.usage);
   const limitFor = useUsageStore((s) => s.limitFor);
   const fileRef = useRef<HTMLInputElement>(null);
   const uid = session?.user?.id ?? null;
-  useEffect(() => { if (uid) loadFor(uid); }, [uid, loadFor]);
   useEffect(() => { if (session?.user?.email && !profile.email) setProfile({ email: session.user.email }); const meta = session?.user?.user_metadata as any; if (meta?.full_name && !profile.name) setProfile({ name: meta.full_name }); }, [session]);
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const f = e.target.files?.[0];
-    e.target.value = "";
-    if (!f || f.size > 1.5 * 1024 * 1024) return;
-
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      const size = 256; // Output size
-      canvas.width = size;
-      canvas.height = size;
-
-      let srcX = 0, srcY = 0, srcW = img.width, srcH = img.height;
-      if (img.width > img.height) {
-        srcX = (img.width - img.height) / 2;
-        srcW = img.height;
-      } else {
-        srcY = (img.height - img.width) / 2;
-        srcH = img.width;
-      }
-
-      ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, size, size);
-      canvas.toBlob((blob) => {
-        if (!blob) return;
-        const reader = new FileReader();
-        reader.onload = () => setProfile({ avatar: String(reader.result || "") });
-        reader.readAsDataURL(blob);
-      }, 'image/jpeg', 0.85);
-    };
-    img.src = URL.createObjectURL(f);
-  };
-
   return (
     <>
       <style>{stCSS}</style>
@@ -215,25 +170,25 @@ export function SettingsPage() {
             <button className="avatar" onClick={() => fileRef.current?.click()}>
               {profile.avatar ? (<img src={profile.avatar} alt="profile" />) : (<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>)}
             </button>
-            <input type="file" accept="image/*" ref={fileRef} style={{ display: "none" }} onChange={handleImageUpload} />
+            <input type="file" accept="image/*" ref={fileRef} style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (!f || f.size > 1.5 * 1024 * 1024) return; const img = new Image(); const url = URL.createObjectURL(f); img.onload = () => { const c = document.createElement("canvas"); const s = Math.min(256, img.width, img.height); c.width = s; c.height = s; const ctx = c.getContext("2d"); ctx?.drawImage(img, (img.width - s) / 2, (img.height - s) / 2, s, s, 0, 0, s, s); setProfile({ avatar: c.toDataURL("image/jpeg", 0.8) }); URL.revokeObjectURL(url); }; img.src = url; }} />
           </div>
           <div className="set-section">
             <div className="set-label">Profile</div>
-            <input className="set-field" type="text" placeholder="Name" value={profile.name} onChange={(e) => setProfile({ name: e.target.value })} />
-            <input className="set-field" type="text" placeholder="Username" value={profile.username} onChange={(e) => setProfile({ username: e.target.value })} />
-            <input className="set-field" type="email" placeholder="Email" value={profile.email} onChange={(e) => setProfile({ email: e.target.value })} />
+            <input className="set-field" type="text" placeholder="Name" autoComplete="off" value={profile.name} onChange={(e) => setProfile({ name: e.target.value })} />
+            <input className="set-field" type="text" placeholder="Username" autoComplete="off" value={profile.username} onChange={(e) => setProfile({ username: e.target.value })} />
+            <input className="set-field" type="email" placeholder="Email" autoComplete="off" value={profile.email} onChange={(e) => setProfile({ email: e.target.value })} />
           </div>
           <div className="set-section">
             <div className="set-label">Daily message limits</div>
             {CHAT_MODELS.map((m) => { const lim = limitFor(m); const rem = Math.max(0, lim - (usage[m] ?? 0)); return (<div className="limit-row" key={m}><div className="limit-top"><span>{MODELS[m].name}</span><span>{lim === 0 ? "Sign in required" : `${rem}/${lim} left`}</span></div><div className="limit-bar"><div className="limit-fill" style={{ width: lim === 0 ? 0 : `${(rem / lim) * 100}%` }} /></div></div>); })}
-            <div className="mem-empty">Limits reset at midnight UTC.</div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,.3)" }}>Limits reset at midnight UTC.</div>
           </div>
           {uid && (
             <div className="set-section">
               <div className="set-label">Memory</div>
-              <button className="new-btn shimmer-btn" onClick={(e) => shimmerThen(e, () => openMemories())}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2a7 7 0 0 1 7 7c0 2.38-1.19 4.47-3 5.74V17a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2v-2.26C6.19 13.47 5 11.38 5 9a7 7 0 0 1 7-7z" /></svg>
-                Memories{memories.length > 0 ? ` · ${memories.length}` : ""}
+              <button className="mem-btn" onClick={() => { closeSettings(); setTimeout(() => openMemories(), 200); }}>
+                <span>Memories</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
               </button>
             </div>
           )}
@@ -257,31 +212,33 @@ export function MemoriesPage() {
   const { memoriesOpen, closeMemories } = useUIStore();
   const { session } = useAuthStore();
   const { memories, loadFor, addMemory, removeMemory } = useMemoryStore();
-  const [memInput, setMemInput] = useState("");
+  const [input, setInput] = useState("");
+  const [adding, setAdding] = useState(false);
   const uid = session?.user?.id ?? null;
   useEffect(() => { if (uid && memoriesOpen) loadFor(uid); }, [uid, memoriesOpen, loadFor]);
+  const handleAdd = async () => {
+    if (!input.trim() || !uid || adding) return;
+    setAdding(true);
+    await addMemory(uid, input.trim());
+    setInput("");
+    setAdding(false);
+  };
   return (
     <>
-      <style>{stCSS}</style>
-      <style>{mmCSS}</style>
+      <style>{memCSS}</style>
       <div id="memories-screen" className={memoriesOpen ? "show" : ""}>
-        <div className="set-header"><button className="set-back" onClick={closeMemories} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Memories</div></div>
-        <div className="set-body">
-          {uid ? (
-            <>
-              <div className="set-section">
-                <div className="set-label">Teach Quix</div>
-                <div className="mem-input-row">
-                  <input className="set-field" type="text" placeholder="Teach Quix something about you..." value={memInput} onChange={(e) => setMemInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && memInput.trim()) { addMemory(uid, memInput); setMemInput(""); } }} />
-                  <button className="mem-add" onClick={() => { if (memInput.trim()) { addMemory(uid, memInput); setMemInput(""); } }}>+</button>
-                </div>
-              </div>
-              <div className="set-section">
-                <div className="set-label">All memories ({memories.length})</div>
-                {memories.length > 0 ? (memories.map((m: any) => (<div className="mem-item" key={m.id}><span>{m.text}</span><button onClick={() => removeMemory(uid, m.id)}>×</button></div>))) : (<div className="mem-empty">No memories yet. Quix also writes automatic memories from your last 24h of chats at every midnight UTC.</div>)}
-              </div>
-            </>
-          ) : (<div className="mem-empty">Sign in to use memories.</div>)}
+        <div className="mem-header">
+          <button className="mem-back" onClick={closeMemories} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button>
+          <div className="mem-title">Memories</div>
+        </div>
+        <div className="mem-body">
+          <div className="mem-input-row">
+            <input className="mem-input" type="text" placeholder="Teach Quix something about you..." value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") handleAdd(); }} autoComplete="off" />
+            <button className="mem-add" onClick={handleAdd} disabled={adding || !input.trim()}>{adding ? "..." : "+"}</button>
+          </div>
+          <div className="mem-list">
+            {memories.length === 0 ? (<div className="mem-empty">No memories yet. Quix also writes automatic memories from your last 24h of chats at every midnight UTC.</div>) : (memories.map((m: any) => (<div className="mem-item" key={m.id}><div style={{ flex: 1 }}><div>{m.text}</div></div><button onClick={() => uid && removeMemory(uid, m.id)}>×</button></div>)))}
+          </div>
         </div>
       </div>
     </>
