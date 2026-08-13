@@ -10,8 +10,9 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
     <style>
-      *, *::before, *::after { box-sizing: border-box; }
+      *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       html, body { margin: 0; padding: 0; background: #000; overflow-x: hidden; }
+      button, a, input, textarea, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
       #root { min-height: 100dvh; }
     </style>
   </head>
