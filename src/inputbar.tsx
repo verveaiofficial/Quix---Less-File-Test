@@ -31,7 +31,35 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
   useEffect(() => { const r = () => { if (window.visualViewport) { const kb = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop; setBottomOffset(Math.max(0, kb)); } }; if (window.visualViewport) window.visualViewport.addEventListener("resize", r); return () => { if (window.visualViewport) window.visualViewport.removeEventListener("resize", r); }; }, []);
 
   const prevent = (e: any) => e.preventDefault();
-  const toggleMic = () => { const w = window as any; const SR = w.SpeechRecognition || w.webkitSpeechRecognition; if (!SR) return; if (listening) { recRef.current?.stop(); setListening(false); return; } const rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false; micBase.current = inputValue; rec.onresult = (e: any) => { let t = ""; for (const r of e.results) t += r[0].transcript; setInputValue((micBase.current ? micBase.current + " " : "") + t); }; rec.onend = () => setListening(false); rec.onerror = () => setListening(false); recRef.current = rec; rec.start(); setListening(true); };
+  const toggleMic = () => {
+    const w = window as any;
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
+    if (!SR) return;
+    if (listening) {
+      recRef.current?.stop();
+      setListening(false);
+      return;
+    }
+    const rec = new SR();
+    rec.lang = "en-US";
+    rec.interimResults = true;
+    rec.continuous = true;
+    micBase.current = inputValue;
+    rec.onresult = (e: any) => {
+      let t = "";
+      for (const r of e.results) {
+        if (r.isFinal) t += r[0].transcript;
+      }
+      if (t) setInputValue((micBase.current ? micBase.current + " " : "") + t);
+    };
+    rec.onend = () => {
+      if (listening) rec.start();
+    };
+    rec.onerror = () => setListening(false);
+    recRef.current = rec;
+    rec.start();
+    setListening(true);
+  };
   const toggleUpload = (e: any) => { e.preventDefault(); e.stopPropagation(); setModelMenuOpen(false); setSpinClass(""); setTimeout(() => { const c = spinDir.current === 1 ? "spin-cw" : "spin-ccw"; setSpinClass(c); spinDir.current *= -1; }, 10); setMenuOpen((p) => !p); };
   const pick = async (files: FileList | null) => { if (!files) return; const parsed = await Promise.all(Array.from(files).map(readFileAsAttachment)); setAttachments((p) => [...p, ...parsed.filter((x): x is PendingAttachment => x !== null)]); };
 
@@ -77,7 +105,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
                       <div key={id} className={`model-item ${locked ? "locked" : ""}`} onClick={(e) => { e.stopPropagation(); if (locked) return; pickModel(id); }}>
                         {activeModel === id && !locked ? (<svg viewBox="0 0 24 24" fill="none" className="model-check" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>) : locked ? (<span dangerouslySetInnerHTML={{ __html: lockSvg }} />) : (<div style={{ width: 15, flexShrink: 0 }} />)}
                         <div className="model-item-content">
-                          <span className="model-title">{MODELS[id].name}{id === "deepthink" && <span className="beta-tag">Coming soon</span>}{locked && id !== "deepthink" && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}</span>
+                          <span className="model-title">{MODELS[id].name}{id === "deepthink" && <span className="beta-tag"> Coming soon</span>}{locked && id !== "deepthink" && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}</span>
                           <span className="model-desc">{MODELS[id].desc}</span>
                         </div>
                       </div>
