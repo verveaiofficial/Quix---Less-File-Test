@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.4.1";
+export const APP_VERSION = "v2.5.0";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -17,6 +17,7 @@ export const GEMINI_MODEL = "gemini-3.5-flash-lite";
 export const IMAGINE_URL = "https://quiximage.lovable.app/";
 export const CHAT_MODELS = ["flash", "lite", "coder", "thinking", "deepthink"];
 export const DEEPTHINK_MAX_SEARCHES = 20;
+export const DEEPTHINK_MIN_SEARCHES = 3;
 export const DEEPTHINK_MAX_MS = 5 * 60 * 1000;
 
 export const MODELS: Record<string, { name: string; desc: string; key: string }> = {
@@ -230,23 +231,36 @@ export async function askGeminiStream(model: string, prompt: string, opts: { sea
   } finally { controller = null; }
 }
 
-/* ================= TAVILY SEARCH ================= */
+/* ================= TAVILY SEARCH (direct + serverless fallback) ================= */
 export interface TavilyResult { title: string; url: string; content: string }
+
+function mapTavily(d: any): TavilyResult[] {
+  return (d?.results || []).map((r: any) => ({ title: r.title || r.url, url: r.url, content: String(r.content || "").slice(0, 1200) }));
+}
 
 export async function tavilySearch(query: string): Promise<TavilyResult[]> {
   const key = env().VITE_TAVILY_API_KEY || "";
   if (!key) throw new Error("NO TAVILY API KEY (add VITE_TAVILY_API_KEY in Vercel).");
   const bodyBase = { query, search_depth: "advanced", max_results: 5 };
-  let res = await fetch("https://api.tavily.com/search", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` }, body: JSON.stringify(bodyBase) });
-  if (res.status === 401 || res.status === 403) {
-    res = await fetch("https://api.tavily.com/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...bodyBase, api_key: key }) });
+  const signal = controller ? controller.signal : undefined;
+  try {
+    let res = await fetch("https://api.tavily.com/search", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` }, body: JSON.stringify(bodyBase), signal });
+    if (res.status === 401 || res.status === 403) {
+      res = await fetch("https://api.tavily.com/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...bodyBase, api_key: key }), signal });
+    }
+    if (!res.ok) throw new Error("Tavily " + res.status);
+    return mapTavily(await res.json());
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw e;
+    const res = await fetch("/api/tavily", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }), signal });
+    if (!res.ok) throw new Error("Tavily search failed (" + res.status + ")");
+    return mapTavily(await res.json());
   }
-  if (!res.ok) throw new Error("Tavily search failed (" + res.status + ")");
-  const d = await res.json();
-  return (d.results || []).map((r: any) => ({ title: r.title || r.url, url: r.url, content: String(r.content || "").slice(0, 1200) }));
 }
 
 /* ================= DEEPTHINK AGENT ================= */
+const SEARCH_RE = /\[\[SEARCH:?\s*([^\]\n]+?)\s*\]\]/i;
+
 async function geminiTurnStream(apiKey: string, contents: any[], onText: (t: string) => void): Promise<string> {
   controller = new AbortController();
   const signal = controller.signal;
@@ -272,11 +286,11 @@ async function geminiTurnStream(apiKey: string, contents: any[], onText: (t: str
 
 function buildDeepThinkSystem(question: string, history: ChatMessage[]): string {
   const blocks: string[] = [];
-  blocks.push("# DeepThink — Autonomous Research Agent\nYou are DeepThink, Quix's deep research mode. You autonomously research the live web, then deliver one comprehensive answer.");
+  blocks.push("# DeepThink — Autonomous Research Agent\nYou are DeepThink, Quix's deep research mode. You autonomously research the live web, then deliver one comprehensive, expert-level answer.");
   blocks.push("## SEARCH TOOL\nWhen you need live information, output a line EXACTLY like this and STOP right after it:\n[[SEARCH: your precise query]]\nThe system runs the search and returns numbered results. Never invent results.");
-  blocks.push("You may search at most " + DEEPTHINK_MAX_SEARCHES + " times and you have about 5 minutes total. Decide yourself WHEN and WHAT to search.");
+  blocks.push("## MANDATORY DEPTH\n- You MUST run at least " + DEEPTHINK_MIN_SEARCHES + " searches before answering, and you MAY run up to " + DEEPTHINK_MAX_SEARCHES + ".\n- FIRST output a short research plan as bullets (• ) listing 3-6 sub-questions.\n- Then search each sub-question, refining queries as you go.\n- Cross-check important claims across multiple sources.\n- Be exhaustive and take your time — a proper DeepThink run lasts several minutes. NEVER rush to a final answer.");
   blocks.push("## BETWEEN SEARCHES\nThink out loud as short bullet lines starting with '• '. Identify gaps and pick the next query.");
-  blocks.push("## FINAL ANSWER\nWhen evidence is enough, write the final answer in clean markdown WITHOUT any [[SEARCH:]] line. Cite sources inline like [1] using the numbered results you received.");
+  blocks.push("## FINAL ANSWER\nOnly after enough research, write the final answer in clean markdown WITHOUT any [[SEARCH:]] line. Cite sources inline like [1] using the numbered results you received.");
   blocks.push("# Global Knowledge\n" + globalKnowledge);
   blocks.push("# Global Instructions\n" + globalInstructions);
   blocks.push("# DeepThink Instructions\n" + deepthinkMd);
@@ -287,7 +301,7 @@ function buildDeepThinkSystem(question: string, history: ChatMessage[]): string 
   const hist = history.slice(-6).map((m) => `${m.role === "user" ? "User" : "Quix"}: ${stripObs(m.content)}`).join("\n");
   if (hist) blocks.push(`--- Conversation so far ---\n${hist}`);
   blocks.push(`--- USER'S RESEARCH QUESTION ---\n${question}`);
-  blocks.push("Begin. Think, search when needed, then answer.");
+  blocks.push("Begin. Write your plan, then search, then answer.");
   return blocks.join("\n\n");
 }
 
@@ -298,6 +312,7 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
   const sources: SourceItem[] = [];
   const seen = new Set<string>();
   let searchCount = 0;
+  let nudges = 0;
   let log = "";
   let finalText = "";
   const contents: any[] = [{ role: "user", parts: [{ text: buildDeepThinkSystem(question, history) }] }];
@@ -305,7 +320,7 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
     while (true) {
       const overTime = Date.now() - started > DEEPTHINK_MAX_MS;
       const turn = await geminiTurnStream(apiKey, contents, (t) => h.onThoughts(log + t));
-      const m = turn.match(/\[\[SEARCH:\s*([^\]]+)\]\]/);
+      const m = turn.match(SEARCH_RE);
       if (m && searchCount < DEEPTHINK_MAX_SEARCHES && !overTime) {
         const query = m[1].trim();
         const before = turn.slice(0, m.index).trim();
@@ -318,19 +333,25 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
           results.forEach((r) => { if (!seen.has(r.url)) { seen.add(r.url); sources.push({ title: r.title, uri: r.url }); } });
           h.onSources([...sources]);
           const block = results.map((r, i) => `[${i + 1}] ${r.title}\n${r.url}\n${r.content}`).join("\n\n");
-          contents.push({ role: "user", parts: [{ text: `SEARCH RESULTS for "${query}":\n${block || "(no results)"}\n\nContinue research ([[SEARCH: query]]) or write your final answer in clean markdown.` }] });
+          contents.push({ role: "user", parts: [{ text: `SEARCH RESULTS for "${query}":\n${block || "(no results)"}\n\nContinue research ([[SEARCH: query]]) or, if you already have enough evidence (${searchCount}+ searches), write your final answer in clean markdown.` }] });
         } catch (e: any) {
           contents.push({ role: "user", parts: [{ text: `Search failed (${e?.message || "error"}). Continue with what you know or try another query.` }] });
         }
         continue;
       }
+      if (!m && searchCount < DEEPTHINK_MIN_SEARCHES && !overTime && nudges < 6) {
+        nudges++;
+        contents.push({ role: "model", parts: [{ text: turn }] });
+        contents.push({ role: "user", parts: [{ text: `Hold on — you've only done ${searchCount} of ${DEEPTHINK_MIN_SEARCHES} minimum searches. Do NOT give the final answer yet. Write one or two reasoning bullets, then output a [[SEARCH: query]] line.` }] });
+        continue;
+      }
       if (m) {
         contents.push({ role: "model", parts: [{ text: turn }] });
         contents.push({ role: "user", parts: [{ text: (overTime ? "Time limit reached. " : "Search limit reached. ") + "Write your final answer now in clean markdown." }] });
-        finalText = (await geminiTurnStream(apiKey, contents, (t) => h.onThoughts(log + t))).replace(/\[\[SEARCH:[^\]]*\]\]/g, "");
+        finalText = (await geminiTurnStream(apiKey, contents, (t) => h.onThoughts(log + t))).replace(SEARCH_RE, "");
         break;
       }
-      finalText = turn;
+      finalText = turn.replace(SEARCH_RE, "");
       break;
     }
   } catch (e: any) {
