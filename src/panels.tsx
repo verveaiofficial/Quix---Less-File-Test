@@ -77,7 +77,7 @@ export function MenuDrawer({ hidden }: { hidden?: boolean }) {
         <div className="drawer-inner">
           <div className="drawer-top">
             <div className="brand">QUIX</div>
-            {searchOpen ? (<input className="new-btn" placeholder="Search your chats..." value={query} autoFocus onChange={(e) => setQuery(e.target.value)} onBlur={() => { if (!query.trim()) setSearchOpen(false); }} />) : (<button className="new-btn" onClick={() => setSearchOpen(true)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>Search chats</button>)}
+            {searchOpen ? (<input className="new-btn" placeholder="Search your chats..." value={query} autoFocus onChange={(e) => setQuery(e.target.value)} onBlur={() => { if (!query.trim()) setSearchOpen(false); }} />) : (<button className="new-btn" onClick={() => setSearchOpen(true)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>Search chats</button>)}
           </div>
           <div className="drawer-scroll">
             <div className="hist-label">Recent</div>
@@ -172,9 +172,9 @@ export function SettingsPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const uid = session?.user?.id ?? null;
   useEffect(() => { if (uid) loadFor(uid); }, [uid, loadFor]);
-  useEffect(() => { 
-    if (session?.user?.email && !profile.email) setProfile({ email: session.user.email }); 
-    const meta = session?.user?.user_metadata as any; 
+  useEffect(() => {
+    if (session?.user?.email && !profile.email) setProfile({ email: session.user.email });
+    const meta = session?.user?.user_metadata as any;
     if (meta?.full_name && !profile.name) setProfile({ name: meta.full_name });
   }, [session]);
 
@@ -210,7 +210,7 @@ export function SettingsPage() {
         <div className="set-body">
           <div className="avatar-wrap">
             <button className="avatar" onClick={() => fileRef.current?.click()}>
-              {profile.avatar ? (<img src={profile.avatar} alt="profile" />) : (<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>)}
+              {profile.avatar ? (<img src={profile.avatar} alt="profile" />) : (<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>)}
             </button>
             <input type="file" accept="image/*" ref={fileRef} style={{ display: "none" }} onChange={handleImageUpload} />
           </div>
@@ -221,7 +221,7 @@ export function SettingsPage() {
           </div>
           <div className="set-section">
             <div className="set-label">Daily message limits</div>
-            {CHAT_MODELS.map((m) => { const lim = limitFor(m); const rem = Math.max(0, lim - (usage[m] ?? 0)); return (<div className="limit-row" key={m}><div className="limit-top"><span>{MODELS[m].name}</span><span>{lim === 0 ? "Sign in required" : `${rem}/${lim} left`}</span></div><div className="limit-bar"><div className="limit-fill" style={{ width: lim === 0 ? 0 : `${(rem / lim) * 100}%` }} /></div></div>); })}
+            {CHAT_MODELS.map((m) => { const lim = limitFor(m); const used = usage[m] ?? 0; const rem = lim < 0 ? Infinity : Math.max(0, lim - used); return (<div className="limit-row" key={m}><div className="limit-top"><span>{MODELS[m].name}</span><span>{lim < 0 ? "Unlimited" : lim === 0 ? "Sign in required" : `${rem}/${lim} left`}</span></div><div className="limit-bar"><div className="limit-fill" style={{ width: lim < 0 ? 100 : lim === 0 ? 0 : `${(rem / lim) * 100}%` }} /></div></div>); })}
             <div className="mem-empty">Limits reset at midnight UTC.</div>
           </div>
           {uid && (
