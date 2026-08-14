@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.4.0";
+export const APP_VERSION = "v2.4.1";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -112,8 +112,8 @@ export const useProfileStore = create<any>((set) => ({
   }),
 }));
 
-/* ================= USAGE LIMITS ================= */
-export const LIMITS: Record<string, number> = { flash: 30, lite: 50, thinking: 10, deepthink: 1, coder: 10 };
+/* ================= USAGE LIMITS (-1 = unlimited) ================= */
+export const LIMITS: Record<string, number> = { flash: 30, lite: 50, thinking: 10, deepthink: -1, coder: 10 };
 const FALLBACK: Record<string, string[]> = { flash: ["lite"], lite: ["flash"], thinking: ["flash", "lite"], deepthink: [], coder: ["flash", "lite"] };
 function readUsage(): Record<string, number> { try { return JSON.parse(localStorage.getItem("quix_usage_" + dayKey()) || "{}"); } catch { return {}; } }
 function guestLimit(m: string): number { return m === "thinking" ? GUEST_THINKING_LIMIT : 0; }
@@ -121,7 +121,7 @@ function guestLimit(m: string): number { return m === "thinking" ? GUEST_THINKIN
 export const useUsageStore = create<any>((set, get) => ({
   usage: readUsage(),
   limitFor: (m: string) => { const sess = useAuthStore.getState().session; return sess ? (LIMITS[m] ?? 30) : guestLimit(m); },
-  remaining: (m: string) => Math.max(0, get().limitFor(m) - (get().usage[m] ?? 0)),
+  remaining: (m: string) => { const lim = get().limitFor(m); if (lim < 0) return Infinity; return Math.max(0, lim - (get().usage[m] ?? 0)); },
   consume: (m: string) => { const base = readUsage(); const u = { ...base, [m]: (base[m] ?? 0) + 1 }; try { localStorage.setItem("quix_usage_" + dayKey(), JSON.stringify(u)); } catch {} set({ usage: u }); },
   resolve: (m: string) => {
     if (get().remaining(m) > 0) return m;
