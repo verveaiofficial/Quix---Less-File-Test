@@ -97,12 +97,12 @@ export function saveProfileToDB(profile: any) {
     const session = useAuthStore.getState().session;
     if (!session?.user?.id || !sb) return;
     try {
-      await sb.from("profiles").upsert({ user_id: session.user.id, name: profile.name || "", username: profile.username || "", email: profile.email || "", avatar: profile.avatar || null }, { onConflict: "user_id" });
+      await sb.from("profiles").upsert({ user_id: session.user.id, name: profile.name || "", email: profile.email || "", avatar: profile.avatar || null }, { onConflict: "user_id" });
     } catch {}
   }, 800);
 }
 export const useProfileStore = create<any>((set) => ({
-  profile: (() => { try { const raw = localStorage.getItem(PROF_KEY); if (raw) return { name: "", username: "", email: "", avatar: null, ...JSON.parse(raw) }; } catch {} return { name: "", username: "", email: "", avatar: null }; })(),
+  profile: (() => { try { const raw = localStorage.getItem(PROF_KEY); if (raw) { const p = { name: "", email: "", avatar: null, ...JSON.parse(raw) }; delete (p as any).username; return p; } } catch {} return { name: "", email: "", avatar: null }; })(),
   setProfile: (patch: any) => set((s: any) => {
     const profile = { ...s.profile, ...patch };
     try { localStorage.setItem(PROF_KEY, JSON.stringify(profile)); } catch {}
