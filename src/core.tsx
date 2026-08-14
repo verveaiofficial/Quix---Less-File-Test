@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.5.0";
+export const APP_VERSION = "v2.6.0";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -17,8 +17,9 @@ export const GEMINI_MODEL = "gemini-3.5-flash-lite";
 export const IMAGINE_URL = "https://quiximage.lovable.app/";
 export const CHAT_MODELS = ["flash", "lite", "coder", "thinking", "deepthink"];
 export const DEEPTHINK_MAX_SEARCHES = 20;
-export const DEEPTHINK_MIN_SEARCHES = 3;
-export const DEEPTHINK_MAX_MS = 5 * 60 * 1000;
+export const DEEPTHINK_MIN_SEARCHES = 5;
+export const DEEPTHINK_MIN_MS = 5 * 60 * 1000;
+export const DEEPTHINK_MAX_MS = 8 * 60 * 1000;
 
 export const MODELS: Record<string, { name: string; desc: string; key: string }> = {
   flash: { name: "Quix 3 Flash", desc: "Balanced intelligence for daily tasks", key: "VITE_GEMINI_FLASH_API_KEY" },
@@ -260,6 +261,7 @@ export async function tavilySearch(query: string): Promise<TavilyResult[]> {
 
 /* ================= DEEPTHINK AGENT ================= */
 const SEARCH_RE = /\[\[SEARCH:?\s*([^\]\n]+?)\s*\]\]/i;
+function fmtTime(sec: number): string { const m = Math.floor(sec / 60); const s = sec % 60; return `${m}:${s < 10 ? "0" : ""}${s}`; }
 
 async function geminiTurnStream(apiKey: string, contents: any[], onText: (t: string) => void): Promise<string> {
   controller = new AbortController();
@@ -286,11 +288,11 @@ async function geminiTurnStream(apiKey: string, contents: any[], onText: (t: str
 
 function buildDeepThinkSystem(question: string, history: ChatMessage[]): string {
   const blocks: string[] = [];
-  blocks.push("# DeepThink — Autonomous Research Agent\nYou are DeepThink, Quix's deep research mode. You autonomously research the live web, then deliver one comprehensive, expert-level answer.");
+  blocks.push("# DeepThink — Autonomous Research Agent\nYou are DeepThink, Quix's deep research mode. You autonomously research the live web for several minutes, then deliver one comprehensive, expert-level answer.");
   blocks.push("## SEARCH TOOL\nWhen you need live information, output a line EXACTLY like this and STOP right after it:\n[[SEARCH: your precise query]]\nThe system runs the search and returns numbered results. Never invent results.");
-  blocks.push("## MANDATORY DEPTH\n- You MUST run at least " + DEEPTHINK_MIN_SEARCHES + " searches before answering, and you MAY run up to " + DEEPTHINK_MAX_SEARCHES + ".\n- FIRST output a short research plan as bullets (• ) listing 3-6 sub-questions.\n- Then search each sub-question, refining queries as you go.\n- Cross-check important claims across multiple sources.\n- Be exhaustive and take your time — a proper DeepThink run lasts several minutes. NEVER rush to a final answer.");
+  blocks.push("## MANDATORY DEPTH\n- This is a LONG, exhaustive research session (target ~5 minutes). You are FORBIDDEN from writing a final answer until the system tells you enough time has passed.\n- You MUST run at least " + DEEPTHINK_MIN_SEARCHES + " searches, and you MAY run up to " + DEEPTHINK_MAX_SEARCHES + ".\n- FIRST output a short research plan as bullets (• ) listing 4-8 sub-questions covering every angle.\n- Then search each sub-question, refining and following up on interesting leads.\n- Cross-check important claims across multiple sources.\n- If told to keep researching, explore NEW angles: counter-arguments, edge cases, real examples, numbers, risks, alternatives. Never repeat old searches.");
   blocks.push("## BETWEEN SEARCHES\nThink out loud as short bullet lines starting with '• '. Identify gaps and pick the next query.");
-  blocks.push("## FINAL ANSWER\nOnly after enough research, write the final answer in clean markdown WITHOUT any [[SEARCH:]] line. Cite sources inline like [1] using the numbered results you received.");
+  blocks.push("## FINAL ANSWER\nOnly when the system allows it, write the final answer in clean markdown WITHOUT any [[SEARCH:]] line. Cite sources inline like [1] using the numbered results you received. Make it thorough and well-structured.");
   blocks.push("# Global Knowledge\n" + globalKnowledge);
   blocks.push("# Global Instructions\n" + globalInstructions);
   blocks.push("# DeepThink Instructions\n" + deepthinkMd);
@@ -301,7 +303,7 @@ function buildDeepThinkSystem(question: string, history: ChatMessage[]): string 
   const hist = history.slice(-6).map((m) => `${m.role === "user" ? "User" : "Quix"}: ${stripObs(m.content)}`).join("\n");
   if (hist) blocks.push(`--- Conversation so far ---\n${hist}`);
   blocks.push(`--- USER'S RESEARCH QUESTION ---\n${question}`);
-  blocks.push("Begin. Write your plan, then search, then answer.");
+  blocks.push("Begin. Write your plan, then search, then keep going until told to answer.");
   return blocks.join("\n\n");
 }
 
@@ -318,9 +320,13 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
   const contents: any[] = [{ role: "user", parts: [{ text: buildDeepThinkSystem(question, history) }] }];
   try {
     while (true) {
-      const overTime = Date.now() - started > DEEPTHINK_MAX_MS;
+      const elapsedMs = Date.now() - started;
+      const overTime = elapsedMs > DEEPTHINK_MAX_MS;
+      const underMin = elapsedMs < DEEPTHINK_MIN_MS;
       const turn = await geminiTurnStream(apiKey, contents, (t) => h.onThoughts(log + t));
       const m = turn.match(SEARCH_RE);
+
+      // 1) model wants to search and still allowed -> do it
       if (m && searchCount < DEEPTHINK_MAX_SEARCHES && !overTime) {
         const query = m[1].trim();
         const before = turn.slice(0, m.index).trim();
@@ -333,24 +339,35 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
           results.forEach((r) => { if (!seen.has(r.url)) { seen.add(r.url); sources.push({ title: r.title, uri: r.url }); } });
           h.onSources([...sources]);
           const block = results.map((r, i) => `[${i + 1}] ${r.title}\n${r.url}\n${r.content}`).join("\n\n");
-          contents.push({ role: "user", parts: [{ text: `SEARCH RESULTS for "${query}":\n${block || "(no results)"}\n\nContinue research ([[SEARCH: query]]) or, if you already have enough evidence (${searchCount}+ searches), write your final answer in clean markdown.` }] });
+          contents.push({ role: "user", parts: [{ text: `SEARCH RESULTS for "${query}":\n${block || "(no results)"}\n\nAnalyze these results in bullets, then continue with another [[SEARCH: query]] for an unexplored angle. Do NOT write the final answer yet.` }] });
         } catch (e: any) {
           contents.push({ role: "user", parts: [{ text: `Search failed (${e?.message || "error"}). Continue with what you know or try another query.` }] });
         }
         continue;
       }
-      if (!m && searchCount < DEEPTHINK_MIN_SEARCHES && !overTime && nudges < 6) {
+
+      // 2) model tries to answer (or search past limits) before minimum time -> force more research
+      if (underMin && !overTime && nudges < 60) {
         nudges++;
+        const elapsedSec = Math.round(elapsedMs / 1000);
+        log += `• ${fmtTime(elapsedSec)} elapsed — deepening research (${searchCount} searches so far)...\n`;
+        h.onThoughts(log);
+        const needSearches = searchCount < DEEPTHINK_MIN_SEARCHES;
+        const canSearch = searchCount < DEEPTHINK_MAX_SEARCHES;
         contents.push({ role: "model", parts: [{ text: turn }] });
-        contents.push({ role: "user", parts: [{ text: `Hold on — you've only done ${searchCount} of ${DEEPTHINK_MIN_SEARCHES} minimum searches. Do NOT give the final answer yet. Write one or two reasoning bullets, then output a [[SEARCH: query]] line.` }] });
+        contents.push({ role: "user", parts: [{ text: `NOT ENOUGH RESEARCH YET — only ${elapsedSec}s of the required ${Math.round(DEEPTHINK_MIN_MS / 1000)}s have passed (${searchCount}/${DEEPTHINK_MIN_SEARCHES} minimum searches). Do NOT write the final answer. ${needSearches || canSearch ? "Output a [[SEARCH: query]] line for a NEW angle you haven't covered." : "Go deeper in bullets: verify claims, counter-arguments, edge cases, real-world examples, numbers and risks."}` }] });
         continue;
       }
+
+      // 3) model wants to search but limits hit -> force final answer
       if (m) {
         contents.push({ role: "model", parts: [{ text: turn }] });
         contents.push({ role: "user", parts: [{ text: (overTime ? "Time limit reached. " : "Search limit reached. ") + "Write your final answer now in clean markdown." }] });
         finalText = (await geminiTurnStream(apiKey, contents, (t) => h.onThoughts(log + t))).replace(SEARCH_RE, "");
         break;
       }
+
+      // 4) enough time passed and model wrote an answer -> done
       finalText = turn.replace(SEARCH_RE, "");
       break;
     }
