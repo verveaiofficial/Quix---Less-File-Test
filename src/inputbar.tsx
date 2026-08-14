@@ -18,19 +18,18 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
   const [listening, setListening] = useState(false);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const listeningRef = useRef(false);
+  const lastFinalIndex = useRef(0);
   const spinDir = useRef(1);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
   const recRef = useRef<any>(null);
-  const micBase = useRef("");
   const fileCount = extractFiles(messages).length;
   const session = useAuthStore((s) => s.session);
   const isGuest = !session;
 
   useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
   useEffect(() => { const r = () => { if (window.visualViewport) { const kb = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop; setBottomOffset(Math.max(0, kb)); } }; if (window.visualViewport) window.visualViewport.addEventListener("resize", r); return () => { if (window.visualViewport) window.visualViewport.removeEventListener("resize", r); }; }, []);
-  // cleanup mic on unmount
   useEffect(() => { return () => { listeningRef.current = false; try { recRef.current?.stop(); } catch {} }; }, []);
 
   const prevent = (e: any) => e.preventDefault();
@@ -43,14 +42,21 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
     rec.lang = "en-US";
     rec.interimResults = true;
     rec.continuous = true;
+    lastFinalIndex.current = 0;
     rec.onresult = (e: any) => {
-      let t = "";
-      for (const r of e.results) { if (r.isFinal) t += r[0].transcript; }
-      t = t.trim();
-      if (t) { const base = micBase.current; setInputValue(base ? base + " " + t : t); }
+      let newWords = "";
+      for (let i = lastFinalIndex.current; i < e.results.length; i++) {
+        if (e.results[i].isFinal) {
+          newWords += e.results[i][0].transcript + " ";
+          lastFinalIndex.current = i + 1;
+        }
+      }
+      newWords = newWords.trim();
+      if (newWords) {
+        setInputValue(prev => (prev ? prev + " " + newWords : newWords).trim());
+      }
     };
     rec.onend = () => {
-      // auto-restart while the user still wants to listen (fixes the permission-grant drop)
       if (listeningRef.current) { setTimeout(() => { if (listeningRef.current) { try { rec.start(); } catch {} } }, 120); }
       else setListening(false);
     };
@@ -60,7 +66,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
     setListening(true);
     try { rec.start(); } catch {}
   };
-  const toggleMic = () => { if (listeningRef.current) stopMic(); else { micBase.current = inputValue; startMic(); } };
+  const toggleMic = () => { if (listeningRef.current) stopMic(); else startMic(); };
   const toggleUpload = (e: any) => { e.preventDefault(); e.stopPropagation(); setModelMenuOpen(false); setSpinClass(""); setTimeout(() => { const c = spinDir.current === 1 ? "spin-cw" : "spin-ccw"; setSpinClass(c); spinDir.current *= -1; }, 10); setMenuOpen((p) => !p); };
   const pick = async (files: FileList | null) => { if (!files) return; const parsed = await Promise.all(Array.from(files).map(readFileAsAttachment)); setAttachments((p) => [...p, ...parsed.filter((x): x is PendingAttachment => x !== null)]); };
 
@@ -68,7 +74,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
   const showStop = isDeepThink ? !!dtRunning : isSending;
   const showMic = listening || (!showStop && !hasText);
 
-  const pickModel = (id: string) => { if (isGuest && id !== "thinking") { setModelMenuOpen(false); useUIStore.getState().openAuth(); return; } setActiveModel(id); setModelMenuOpen(false); };
+  const pickModel = (id: string) => { if (isGuest && id !== "thinking") { setModelMenuOpen(false); useUIStore.getState().openAuth(); return; } setActiveModel(id); setModelMenuOpen(false); taRef.current?.blur(); };
   const send = () => { const text = inputValue.trim(); if (!text) return; stopMic(); if (isDeepThink) { onDeepThinkSend?.(text); setInputValue(""); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } return; } if (attachments.length === 0 && !text) return; onSend?.(text, attachments); setInputValue(""); setAttachments([]); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } };
   const stop = () => { if (isDeepThink) { onDeepThinkStop?.(); return; } abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
   const mainAction = () => { if (showStop) return stop(); if (listening) return toggleMic(); if (hasText) return send(); return toggleMic(); };
@@ -95,7 +101,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
                 </div>
               )}
               <div style={{ position: "relative" }}>
-                <button type="button" className={`model-btn ${modelMenuOpen ? "open" : ""}`} onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setModelMenuOpen((p) => !p); }} onMouseDown={prevent} onTouchStart={prevent}>
+                <button type="button" className={`model-btn ${modelMenuOpen ? "open" : ""}`} onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setModelMenuOpen((p) => !p); taRef.current?.blur(); }} onMouseDown={prevent} onTouchStart={prevent}>
                   <span>{MODELS[activeModel]?.name ?? "Quix 3 Flash"}</span>
                   <span className="mchev"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg></span>
                 </button>
@@ -116,7 +122,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
               </div>
             </div>
             <div className="action-right">
-              {canvasOn && !isDeepThink && (<button type="button" className="cv-pill" onClick={() => openFilesList()}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{fileCount > 0 ? ` · ${fileCount}` : ""}</button>)}
+              {canvasOn && !isDeepThink && (<button type="button" className="cv-pill" onClick={() => openFilesList()}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{fileCount > 0 ? ` · ${fileCount}` : ""}</button>)}
               <button type="button" className={`send-btn ${showStop ? "stop" : ""} ${showMic ? (listening ? "mic listening" : "mic") : ""}`} onClick={mainAction} aria-label={showStop ? "Stop" : listening ? "Stop voice input" : hasText ? "Send" : "Voice input"}>
                 {showStop ? (<svg width="15" height="15" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>) : showMic ? (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" /><path d="M19 10v2a7 7 0 01-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>) : (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>)}
               </button>
