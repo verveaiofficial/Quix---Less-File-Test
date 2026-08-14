@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  THINK_SEP, IMAGINE_URL, rid, ChatMessage,
+  THINK_SEP, IMAGINE_URL, rid, ChatMessage, MODELS, CHAT_MODELS,
   useAuthStore, useUIStore, useChatStore, useUsageStore,
   createChat, insertMessage, askGeminiStream, runDeepThink, buildPrompt, runDailyMemorySync,
   stripObs, extractObs, saveObservation,
@@ -38,8 +38,10 @@ export default function App() {
     const sessNow = useAuthStore.getState().session;
     const startModel = usage.resolve(activeModel);
     if (!startModel) {
+      const allOut = CHAT_MODELS.every((m) => usage.remaining(m) <= 0);
+      const modelName = MODELS[activeModel]?.name ?? activeModel;
       addMessage({ id: rid(), role: "user", model: activeModel, content: text, createdAt: Date.now(), status: "done" });
-      addMessage({ id: rid(), role: "ai", model: activeModel, content: sessNow ? "Daily limit reached for all models. Limits reset at midnight UTC." : "You've used your free Thinking messages. Sign in to keep talking.", createdAt: Date.now(), status: "error" });
+      addMessage({ id: rid(), role: "ai", model: activeModel, content: !sessNow ? "You've used your free Thinking messages. Sign in to keep talking." : allOut ? "Daily limit reached for all models. Limits reset at midnight UTC." : `Daily ${modelName} limit reached. Limits reset at midnight UTC.`, createdAt: Date.now(), status: "error" });
       if (!sessNow) useUIStore.getState().openAuth();
       return;
     }
