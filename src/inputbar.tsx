@@ -53,6 +53,15 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
 
   const stopMic = () => { listeningRef.current = false; setListening(false); try { recRef.current?.stop(); } catch {} };
 
+  const triggerSpin = () => {
+    setSpinClass("");
+    setTimeout(() => {
+      const c = spinDir.current === 1 ? "spin-cw" : "spin-ccw";
+      setSpinClass(c);
+      spinDir.current *= -1;
+    }, 10);
+  };
+
   const startMic = () => {
     const w = window as any;
     const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
@@ -63,27 +72,18 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
     rec.continuous = true;
     resetVoiceRefs();
     rec.onresult = (e: any) => {
-      // This engine resends the FULL cumulative sentence as a new "final"
-      // result on every pause, rather than just the new delta — so we only
-      // keep the most recent final entry (it already contains everything
-      // said so far this session) instead of joining every final we've seen.
       let latest = "";
       let finalIdx = -1;
       for (let i = e.results.length - 1; i >= 0; i--) {
         if (e.results[i].isFinal) { latest = e.results[i][0].transcript; finalIdx = i; break; }
       }
       if (latest) sessionTextRef.current = latest.trim();
-      // Anything after the last final result is still in-progress speech —
-      // keep it as a tail so it isn't lost if the session ends before it
-      // gets finalized.
       let tail = "";
       for (let i = finalIdx + 1; i < e.results.length; i++) tail += e.results[i][0].transcript;
       interimTailRef.current = tail.trim();
     };
     rec.onend = () => {
       if (listeningRef.current) {
-        // Natural pause — the engine auto-stopped on its own. Bank this
-        // session's text and start a fresh session to keep listening.
         const chunk = [sessionTextRef.current, interimTailRef.current].filter(Boolean).join(" ").trim();
         if (chunk) committedRef.current.push(chunk);
         sessionTextRef.current = "";
@@ -91,9 +91,6 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
         setTimeout(() => { if (listeningRef.current) { try { rec.start(); } catch {} } }, 120);
         return;
       }
-      // User-requested stop (confirm or cancel). Only now — once the engine
-      // has actually finished flushing — do we commit or discard, so we
-      // never cut off words the user was still finishing saying.
       if (finishTimeoutRef.current) { clearTimeout(finishTimeoutRef.current); finishTimeoutRef.current = null; }
       if (finishingRef.current) {
         finishingRef.current = false;
@@ -108,6 +105,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
     recRef.current = rec;
     listeningRef.current = true;
     setListening(true);
+    triggerSpin();
     try { rec.start(); } catch {}
   };
 
@@ -117,7 +115,6 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
     finishingRef.current = true;
     setFinishing(true);
     try { recRef.current?.stop(); } catch { finishingRef.current = false; setFinishing(false); setListening(false); commitAndReset(); return; }
-    // Safety net in case onend never fires on some browsers.
     finishTimeoutRef.current = setTimeout(() => {
       if (finishingRef.current) {
         finishingRef.current = false;
@@ -139,7 +136,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
   };
 
   const toggleMic = () => { if (listeningRef.current) finishMic(); else startMic(); };
-  const toggleUpload = (e: any) => { e.preventDefault(); e.stopPropagation(); setModelMenuOpen(false); setSpinClass(""); setTimeout(() => { const c = spinDir.current === 1 ? "spin-cw" : "spin-ccw"; setSpinClass(c); spinDir.current *= -1; }, 10); setMenuOpen((p) => !p); };
+  const toggleUpload = (e: any) => { e.preventDefault(); e.stopPropagation(); setModelMenuOpen(false); triggerSpin(); setMenuOpen((p) => !p); };
   const pick = async (files: FileList | null) => { if (!files) return; const parsed = await Promise.all(Array.from(files).map(readFileAsAttachment)); setAttachments((p) => [...p, ...parsed.filter((x): x is PendingAttachment => x !== null)]); };
 
   const hasText = inputValue.trim().length > 0;
