@@ -176,7 +176,6 @@ export function SettingsPage() {
     if (session?.user?.email && !profile.email) setProfile({ email: session.user.email }); 
     const meta = session?.user?.user_metadata as any; 
     if (meta?.full_name && !profile.name) setProfile({ name: meta.full_name });
-    if (profile.username && profile.username === profile.email) setProfile({ username: "" });
   }, [session]);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -218,7 +217,6 @@ export function SettingsPage() {
           <div className="set-section">
             <div className="set-label">Profile</div>
             <input className="set-field" type="text" placeholder="Name" value={profile.name} onChange={(e) => setProfile({ name: e.target.value })} />
-            <input className="set-field" type="text" placeholder="Username" value={profile.username} onChange={(e) => setProfile({ username: e.target.value })} />
             <input className="set-field" type="email" placeholder="Email" value={profile.email} onChange={(e) => setProfile({ email: e.target.value })} />
           </div>
           <div className="set-section">
