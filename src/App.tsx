@@ -1,29 +1,27 @@
 import React, { useEffect, useRef, useState } from "react";
 import {
-  THINK_SEP, IMAGINE_URL, DEEPTHINK_URL, rid, ChatMessage,
+  THINK_SEP, IMAGINE_URL, rid, ChatMessage,
   useAuthStore, useUIStore, useChatStore, useUsageStore,
-  createChat, insertMessage, askGeminiStream, buildPrompt, runDailyMemorySync,
+  createChat, insertMessage, askGeminiStream, runDeepThink, buildPrompt, runDailyMemorySync,
   stripObs, extractObs, saveObservation,
 } from "./core";
 import { CanvasPanel, useCanvasStore } from "./canvas";
 import { globalCSS, layerCSS } from "./styles";
 import { MessageList, PendingAttachment } from "./ui";
-import { ChatHeader, MenuDrawer, AuthScreen, SettingsPage, LoadingScreen, DeepThinkLayer, MemoriesPage, useImagineStore } from "./panels";
+import { ChatHeader, MenuDrawer, AuthScreen, SettingsPage, LoadingScreen, MemoriesPage, useImagineStore } from "./panels";
 import { ChatInputBar } from "./inputbar";
 
 const CHAIN: Record<string, string[]> = {
   flash: ["flash", "lite"], lite: ["lite", "flash"], thinking: ["thinking", "flash", "lite"],
-  deepthink: ["deepthink", "flash", "lite"], coder: ["coder", "flash", "lite"],
+  coder: ["coder", "flash", "lite"],
 };
 
 export default function App() {
   const [loading, setLoading] = useState(true);
-  const [dtRunning, setDtRunning] = useState(false);
   const { activeModel, addMessage, updateMessage, setIsSending, setActiveModel } = useChatStore();
   const { viewMode, fontScale } = useUIStore();
   const session = useAuthStore((s) => s.session);
   const imagineNonce = useImagineStore((s) => s.nonce);
-  const dtFrameRef = useRef<HTMLIFrameElement>(null);
   const isDeepThink = viewMode === "chat" && activeModel === "deepthink";
 
   useEffect(() => { useAuthStore.getState().init(); }, []);
@@ -33,16 +31,6 @@ export default function App() {
     root.style.setProperty('--font-scale', fontScale);
   }, [fontScale]);
   useEffect(() => { if (session?.user?.id) runDailyMemorySync(); }, [session]);
-
-  useEffect(() => {
-    const h = (e: MessageEvent) => { if (e.origin !== "https://quix-deepthink.lovable.app") return; const d = e.data || {}; if (d.type === "deepthink:started") setDtRunning(true); if (d.type === "deepthink:complete" || d.type === "deepthink:stopped") setDtRunning(false); if (d.type === "deepthink:ready") setDtRunning(!!d.running); };
-    window.addEventListener("message", h);
-    return () => window.removeEventListener("message", h);
-  }, []);
-
-  const postToDeepThink = (msg: any) => { const cw = dtFrameRef.current?.contentWindow; if (cw) cw.postMessage(msg, DEEPTHINK_URL); };
-  const handleDeepThinkSend = (text: string) => { const usage = useUsageStore.getState(); const rem = usage.remaining("deepthink"); if (rem <= 0) { const fallback = usage.resolve("deepthink"); if (fallback) setActiveModel(fallback); else useUIStore.getState().openAuth(); return; } usage.consume("deepthink"); postToDeepThink({ type: "deepthink:ask", question: text }); };
-  const handleDeepThinkStop = () => { postToDeepThink({ type: "deepthink:stop" }); };
 
   const handleSend = async (text: string, attachments: PendingAttachment[]) => {
     if (useChatStore.getState().isSending) return;
@@ -63,8 +51,32 @@ export default function App() {
     addMessage(userMessage);
     addMessage({ id: aiId, role: "ai", model: startModel, content: "", thoughts: "", createdAt: Date.now(), status: "thinking" } as any);
     setIsSending(true);
-    const chain = CHAIN[startModel] || [startModel, "flash", "lite"];
 
+    // ===== DEEPTHINK AGENT PATH =====
+    if (startModel === "deepthink") {
+      useUsageStore.getState().consume("deepthink");
+      const t0 = Date.now();
+      const history = useChatStore.getState().messages.filter((x) => x.id !== aiId && x.content.trim() !== "");
+      runDeepThink(text, history, {
+        onThoughts: (t) => updateMessage(aiId, { thoughts: t, status: "thinking" }),
+        onSources: (s) => updateMessage(aiId, { sources: s }),
+        onDone: (r) => {
+          const raw = r.text || "";
+          const obs = extractObs(raw) || `User asked DeepThink: "${text.slice(0, 140)}"`;
+          saveObservation(obs);
+          const full = stripObs(raw);
+          updateMessage(aiId, { content: full || "Done.", thoughts: r.thoughts, sources: r.sources, status: "streaming", doneStreaming: true, thinkTime: Math.max(1, Math.round((Date.now() - t0) / 1000)) } as any);
+          setIsSending(false);
+        },
+      }).catch((e: any) => {
+        updateMessage(aiId, { content: `DeepThink error: ${e?.message || e}`, status: "error" });
+        setIsSending(false);
+      });
+      return;
+    }
+
+    // ===== NORMAL MODELS PATH =====
+    const chain = CHAIN[startModel] || [startModel, "flash", "lite"];
     const attempt = (i: number) => {
       if (i >= chain.length) { updateMessage(aiId, { content: "All models are out of quota for today.", status: "error" }); setIsSending(false); return; }
       const m = chain[i];
@@ -117,8 +129,8 @@ export default function App() {
       <MemoriesPage />
       <CanvasPanel />
       <div className={`qx-layer ${viewMode === "chat" ? "center" : "left"}`}>
-        {isDeepThink ? (<DeepThinkLayer frameRef={dtFrameRef} />) : (<MessageList />)}
-        <ChatInputBar onSend={handleSend} onDeepThinkSend={handleDeepThinkSend} onDeepThinkStop={handleDeepThinkStop} isDeepThink={isDeepThink} dtRunning={dtRunning} />
+        <MessageList />
+        <ChatInputBar onSend={handleSend} isDeepThink={isDeepThink} />
       </div>
       <div className={`qx-layer ${viewMode === "imagine" ? "center" : "right"}`}>
         <iframe key={imagineNonce} src={IMAGINE_URL} title="Imagine 1.5" />
