@@ -3,21 +3,99 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
     <meta name="theme-color" content="#000000" />
     <title>Quix Chat</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Syne:wght@700;800&display=swap" rel="stylesheet" />
     <style>
       *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-      html, body { margin: 0; padding: 0; background: #000; overflow-x: hidden; }
-      button, a, input, textarea, [role="button"] { -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-      #root { min-height: 100dvh; }
+      html, body { 
+        margin: 0; 
+        padding: 0; 
+        background: #000; 
+        overflow-x: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', 'Arial', sans-serif;
+      }
+      button, a, input, textarea, [role="button"] { 
+        -webkit-tap-highlight-color: transparent; 
+        touch-action: manipulation;
+        font-family: inherit;
+      }
+      #root { 
+        min-height: 100vh;
+        min-height: 100dvh;
+        min-height: 100lvh;
+      }
+      
+      /* Font loading classes */
+      .fonts-loaded body { font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+      .fonts-loaded .brand, .fonts-loaded .set-title, .fonts-loaded .quix-label, .fonts-loaded .auth-logo { font-family: 'Syne', 'Arial Black', sans-serif; }
+      
+      /* Smooth font loading */
+      @font-face {
+        font-family: 'DM Sans';
+        font-style: normal;
+        font-weight: 400;
+        font-display: swap;
+        src: local('DM Sans Regular'), local('DMSans-Regular');
+      }
+      @font-face {
+        font-family: 'DM Sans';
+        font-style: normal;
+        font-weight: 500;
+        font-display: swap;
+        src: local('DM Sans Medium'), local('DMSans-Medium');
+      }
+      @font-face {
+        font-family: 'DM Sans';
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: local('DM Sans Bold'), local('DMSans-Bold');
+      }
+      @font-face {
+        font-family: 'Syne';
+        font-style: normal;
+        font-weight: 700;
+        font-display: swap;
+        src: local('Syne Bold'), local('Syne-Bold');
+      }
+      @font-face {
+        font-family: 'Syne';
+        font-style: normal;
+        font-weight: 800;
+        font-display: swap;
+        src: local('Syne ExtraBold'), local('Syne-ExtraBold');
+      }
     </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Font loading detection
+      if ('fonts' in document) {
+        Promise.all([
+          document.fonts.load('400 1em "DM Sans"'),
+          document.fonts.load('700 1em "Syne"')
+        ]).then(() => {
+          document.documentElement.classList.add('fonts-loaded');
+        }).catch(() => {
+          // Fonts failed to load, use system fonts
+          console.log('Using system fonts');
+        });
+      } else {
+        // Browser doesn't support Font Loading API
+        document.documentElement.classList.add('fonts-loaded');
+      }
+      
+      // Viewport height fix for mobile browsers
+      function setVH() {
+        const vh = window.innerHeight * 0.01;
+        document.documentElement.style.setProperty('--vh', `${vh}px`);
+      }
+      setVH();
+      window.addEventListener('resize', setVH);
+      window.addEventListener('orientationchange', setVH);
+    </script>
   </body>
 </html>
