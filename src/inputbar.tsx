@@ -18,7 +18,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
   const [listening, setListening] = useState(false);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const listeningRef = useRef(false);
-  const finalsRef = useRef<string[]>([]);
+  const sessionTextRef = useRef("");
   const committedRef = useRef<string[]>([]);
   const spinDir = useRef(1);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -43,25 +43,25 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
     rec.lang = "en-US";
     rec.interimResults = true;
     rec.continuous = true;
-    finalsRef.current = [];
+    sessionTextRef.current = "";
     committedRef.current = [];
     rec.onresult = (e: any) => {
-      // Overwrite by index instead of appending by pointer — some mobile
-      // engines re-send/revise already-"final" segments mid-session, which
-      // caused duplicated words when we blindly appended new final text.
-      for (let i = 0; i < e.results.length; i++) {
-        if (e.results[i].isFinal) {
-          finalsRef.current[i] = e.results[i][0].transcript;
-        }
+      // This engine resends the FULL cumulative sentence as a new "final"
+      // result on every pause, rather than just the new delta — so we only
+      // keep the most recent final entry (it already contains everything
+      // said so far this session) instead of joining every final we've seen.
+      let latest = "";
+      for (let i = e.results.length - 1; i >= 0; i--) {
+        if (e.results[i].isFinal) { latest = e.results[i][0].transcript; break; }
       }
+      if (latest) sessionTextRef.current = latest.trim();
     };
     rec.onend = () => {
       if (listeningRef.current) {
-        // Session is restarting — bank what this session finalized, then
-        // start a fresh index-0 session for the overwrite logic above.
-        const chunk = finalsRef.current.filter(Boolean).join(" ").trim();
-        if (chunk) committedRef.current.push(chunk);
-        finalsRef.current = [];
+        // Session is restarting — bank this session's cumulative text, then
+        // start a fresh session.
+        if (sessionTextRef.current) committedRef.current.push(sessionTextRef.current);
+        sessionTextRef.current = "";
         setTimeout(() => { if (listeningRef.current) { try { rec.start(); } catch {} } }, 120);
       } else {
         setListening(false);
@@ -77,9 +77,8 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
     listeningRef.current = false;
     try { recRef.current?.stop(); } catch {}
     setListening(false);
-    const chunk = finalsRef.current.filter(Boolean).join(" ").trim();
-    if (chunk) committedRef.current.push(chunk);
-    finalsRef.current = [];
+    if (sessionTextRef.current) committedRef.current.push(sessionTextRef.current);
+    sessionTextRef.current = "";
     const full = committedRef.current.join(" ").trim();
     committedRef.current = [];
     if (full) setInputValue(prev => (prev ? prev + " " + full : full).trim());
