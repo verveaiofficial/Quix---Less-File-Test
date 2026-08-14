@@ -17,6 +17,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
   const [bottomOffset, setBottomOffset] = useState(0);
   const [listening, setListening] = useState(false);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const listeningRef = useRef(false);
   const spinDir = useRef(1);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -29,32 +30,48 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
 
   useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
   useEffect(() => { const r = () => { if (window.visualViewport) { const kb = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop; setBottomOffset(Math.max(0, kb)); } }; if (window.visualViewport) window.visualViewport.addEventListener("resize", r); return () => { if (window.visualViewport) window.visualViewport.removeEventListener("resize", r); }; }, []);
+  // cleanup mic on unmount
+  useEffect(() => { return () => { listeningRef.current = false; try { recRef.current?.stop(); } catch {} }; }, []);
 
   const prevent = (e: any) => e.preventDefault();
-  const toggleMic = () => { const w = window as any; const SR = w.SpeechRecognition || w.webkitSpeechRecognition; if (!SR) return; if (listening) { recRef.current?.stop(); setListening(false); return; } const rec = new SR(); rec.lang = "en-US"; rec.interimResults = true; rec.continuous = false; micBase.current = inputValue; rec.onresult = (e: any) => { let t = ""; for (const r of e.results) t += r[0].transcript; setInputValue((micBase.current ? micBase.current + " " : "") + t); }; rec.onend = () => setListening(false); rec.onerror = () => setListening(false); recRef.current = rec; rec.start(); setListening(true); };
+  const stopMic = () => { listeningRef.current = false; setListening(false); try { recRef.current?.stop(); } catch {} };
+  const startMic = () => {
+    const w = window as any;
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
+    if (!SR) return;
+    const rec = new SR();
+    rec.lang = "en-US";
+    rec.interimResults = true;
+    rec.continuous = true;
+    rec.onresult = (e: any) => {
+      let t = "";
+      for (const r of e.results) { if (r.isFinal) t += r[0].transcript; }
+      t = t.trim();
+      if (t) { const base = micBase.current; setInputValue(base ? base + " " + t : t); }
+    };
+    rec.onend = () => {
+      // auto-restart while the user still wants to listen (fixes the permission-grant drop)
+      if (listeningRef.current) { setTimeout(() => { if (listeningRef.current) { try { rec.start(); } catch {} } }, 120); }
+      else setListening(false);
+    };
+    rec.onerror = (e: any) => { if (e && (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "audio-capture")) { listeningRef.current = false; setListening(false); } };
+    recRef.current = rec;
+    listeningRef.current = true;
+    setListening(true);
+    try { rec.start(); } catch {}
+  };
+  const toggleMic = () => { if (listeningRef.current) stopMic(); else { micBase.current = inputValue; startMic(); } };
   const toggleUpload = (e: any) => { e.preventDefault(); e.stopPropagation(); setModelMenuOpen(false); setSpinClass(""); setTimeout(() => { const c = spinDir.current === 1 ? "spin-cw" : "spin-ccw"; setSpinClass(c); spinDir.current *= -1; }, 10); setMenuOpen((p) => !p); };
   const pick = async (files: FileList | null) => { if (!files) return; const parsed = await Promise.all(Array.from(files).map(readFileAsAttachment)); setAttachments((p) => [...p, ...parsed.filter((x): x is PendingAttachment => x !== null)]); };
 
   const hasText = inputValue.trim().length > 0;
   const showStop = isDeepThink ? !!dtRunning : isSending;
-  const showMic = !showStop && !hasText;
+  const showMic = listening || (!showStop && !hasText);
 
-  const pickModel = (id: string) => {
-    // DeepThink is locked for everyone – do nothing if clicked
-    if (id === "deepthink") return;
-    // For guests, only Thinking is allowed; other models require sign-in
-    if (isGuest && id !== "thinking") {
-      setModelMenuOpen(false);
-      useUIStore.getState().openAuth();
-      return;
-    }
-    setActiveModel(id);
-    setModelMenuOpen(false);
-  };
-
-  const send = () => { const text = inputValue.trim(); if (!text) return; if (isDeepThink) { onDeepThinkSend?.(text); setInputValue(""); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } return; } if (attachments.length === 0 && !text) return; onSend?.(text, attachments); setInputValue(""); setAttachments([]); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } };
+  const pickModel = (id: string) => { if (isGuest && id !== "thinking") { setModelMenuOpen(false); useUIStore.getState().openAuth(); return; } setActiveModel(id); setModelMenuOpen(false); };
+  const send = () => { const text = inputValue.trim(); if (!text) return; stopMic(); if (isDeepThink) { onDeepThinkSend?.(text); setInputValue(""); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } return; } if (attachments.length === 0 && !text) return; onSend?.(text, attachments); setInputValue(""); setAttachments([]); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } };
   const stop = () => { if (isDeepThink) { onDeepThinkStop?.(); return; } abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
-  const mainAction = () => { if (showStop) return stop(); if (hasText) return send(); return toggleMic(); };
+  const mainAction = () => { if (showStop) return stop(); if (listening) return toggleMic(); if (hasText) return send(); return toggleMic(); };
 
   return (
     <>
@@ -84,21 +101,12 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
                 </button>
                 <div className={`pop-menu ${modelMenuOpen ? "show" : ""}`}>
                   {CHAT_MODELS.map((id) => {
-                    // DeepThink is always locked (not clickable)
-                    const isDeepThinkModel = id === "deepthink";
-                    // For guests, only Thinking is allowed, others are locked
-                    const locked = isDeepThinkModel || (isGuest && id !== "thinking");
-                    // Only show "Sign in" for guest-locked models that are NOT DeepThink
-                    const showSignIn = locked && isGuest && !isDeepThinkModel;
+                    const locked = (isGuest && id !== "thinking") || id === "deepthink";
                     return (
-                      <div key={id} className={`model-item ${locked ? "locked" : ""}`} onClick={(e) => { e.stopPropagation(); pickModel(id); }}>
+                      <div key={id} className={`model-item ${locked ? "locked" : ""}`} onClick={(e) => { e.stopPropagation(); if (locked) return; pickModel(id); }}>
                         {activeModel === id && !locked ? (<svg viewBox="0 0 24 24" fill="none" className="model-check" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>) : locked ? (<span dangerouslySetInnerHTML={{ __html: lockSvg }} />) : (<div style={{ width: 15, flexShrink: 0 }} />)}
                         <div className="model-item-content">
-                          <span className="model-title">
-                            {MODELS[id].name}
-                            {isDeepThinkModel && <span className="beta-tag">Coming soon</span>}
-                            {showSignIn && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}
-                          </span>
+                          <span className="model-title">{MODELS[id].name}{id === "deepthink" && <span className="beta-tag"> Coming soon</span>}{locked && id !== "deepthink" && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}</span>
                           <span className="model-desc">{MODELS[id].desc}</span>
                         </div>
                       </div>
@@ -108,9 +116,9 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
               </div>
             </div>
             <div className="action-right">
-              {canvasOn && !isDeepThink && (<button type="button" className="cv-pill" onClick={() => openFilesList()}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{fileCount > 0 ? ` · ${fileCount}` : ""}</button>)}
-              <button type="button" className={`send-btn ${showStop ? "stop" : ""} ${showMic ? (listening ? "mic listening" : "mic") : ""}`} onClick={mainAction} aria-label={showStop ? "Stop" : hasText ? "Send" : "Voice input"}>
-                {showStop ? (<svg width="15" height="15" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>) : hasText ? (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>) : (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" /><path d="M19 10v2a7 7 0 01-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>)}
+              {canvasOn && !isDeepThink && (<button type="button" className="cv-pill" onClick={() => openFilesList()}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{fileCount > 0 ? ` · ${fileCount}` : ""}</button>)}
+              <button type="button" className={`send-btn ${showStop ? "stop" : ""} ${showMic ? (listening ? "mic listening" : "mic") : ""}`} onClick={mainAction} aria-label={showStop ? "Stop" : listening ? "Stop voice input" : hasText ? "Send" : "Voice input"}>
+                {showStop ? (<svg width="15" height="15" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>) : showMic ? (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" /><path d="M19 10v2a7 7 0 01-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>) : (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>)}
               </button>
             </div>
           </div>
