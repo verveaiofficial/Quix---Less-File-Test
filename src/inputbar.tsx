@@ -19,6 +19,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
   const listeningRef = useRef(false);
   const sessionTextRef = useRef("");
+  const interimTailRef = useRef("");
   const committedRef = useRef<string[]>([]);
   const spinDir = useRef(1);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -44,6 +45,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
     rec.interimResults = true;
     rec.continuous = true;
     sessionTextRef.current = "";
+    interimTailRef.current = "";
     committedRef.current = [];
     rec.onresult = (e: any) => {
       // This engine resends the FULL cumulative sentence as a new "final"
@@ -51,17 +53,26 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
       // keep the most recent final entry (it already contains everything
       // said so far this session) instead of joining every final we've seen.
       let latest = "";
+      let finalIdx = -1;
       for (let i = e.results.length - 1; i >= 0; i--) {
-        if (e.results[i].isFinal) { latest = e.results[i][0].transcript; break; }
+        if (e.results[i].isFinal) { latest = e.results[i][0].transcript; finalIdx = i; break; }
       }
       if (latest) sessionTextRef.current = latest.trim();
+      // Anything after the last final result is still in-progress speech —
+      // keep it as a tail so it isn't lost if the session ends before it
+      // gets finalized (this was causing the last few words to go missing).
+      let tail = "";
+      for (let i = finalIdx + 1; i < e.results.length; i++) tail += e.results[i][0].transcript;
+      interimTailRef.current = tail.trim();
     };
     rec.onend = () => {
       if (listeningRef.current) {
-        // Session is restarting — bank this session's cumulative text, then
-        // start a fresh session.
-        if (sessionTextRef.current) committedRef.current.push(sessionTextRef.current);
+        // Session is restarting — bank this session's cumulative text
+        // (plus any not-yet-finalized tail), then start a fresh session.
+        const chunk = [sessionTextRef.current, interimTailRef.current].filter(Boolean).join(" ").trim();
+        if (chunk) committedRef.current.push(chunk);
         sessionTextRef.current = "";
+        interimTailRef.current = "";
         setTimeout(() => { if (listeningRef.current) { try { rec.start(); } catch {} } }, 120);
       } else {
         setListening(false);
@@ -77,11 +88,21 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
     listeningRef.current = false;
     try { recRef.current?.stop(); } catch {}
     setListening(false);
-    if (sessionTextRef.current) committedRef.current.push(sessionTextRef.current);
+    const chunk = [sessionTextRef.current, interimTailRef.current].filter(Boolean).join(" ").trim();
+    if (chunk) committedRef.current.push(chunk);
     sessionTextRef.current = "";
+    interimTailRef.current = "";
     const full = committedRef.current.join(" ").trim();
     committedRef.current = [];
     if (full) setInputValue(prev => (prev ? prev + " " + full : full).trim());
+  };
+  const cancelMic = () => {
+    listeningRef.current = false;
+    try { recRef.current?.stop(); } catch {}
+    setListening(false);
+    sessionTextRef.current = "";
+    interimTailRef.current = "";
+    committedRef.current = [];
   };
   const toggleMic = () => { if (listeningRef.current) finishMic(); else startMic(); };
   const toggleUpload = (e: any) => { e.preventDefault(); e.stopPropagation(); setModelMenuOpen(false); setSpinClass(""); setTimeout(() => { const c = spinDir.current === 1 ? "spin-cw" : "spin-ccw"; setSpinClass(c); spinDir.current *= -1; }, 10); setMenuOpen((p) => !p); };
@@ -102,7 +123,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
       <input type="file" ref={imgRef} accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
       <div className="input-wrapper" style={{ bottom: `${bottomOffset}px` }}>
-        <div className="input-bar">
+        <div className={`input-bar ${listening ? "listening" : ""}`}>
           {!isDeepThink && attachments.length > 0 && (<div className="attach-row">{attachments.map((a) => (<div className="attach-chip" key={a.id}>{a.kind === "image" && a.previewUrl ? <img className="attach-thumb" src={a.previewUrl} alt={a.name} /> : null}<span>{a.name}</span><button className="attach-remove" onClick={() => setAttachments((p) => p.filter((x) => x.id !== a.id))}>×</button></div>))}</div>)}
           <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink..." : "Ask Quix..."} rows={1} value={inputValue} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} onBlur={() => { if (!menuOpen) setBottomOffset(0); }} />
           <div className="action-row">
@@ -140,6 +161,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
             </div>
             <div className="action-right">
               {canvasOn && !isDeepThink && (<button type="button" className="cv-pill" onClick={() => openFilesList()}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{fileCount > 0 ? ` · ${fileCount}` : ""}</button>)}
+              {listening && (<button type="button" className="mic-cancel-btn" onClick={cancelMic} aria-label="Cancel voice input"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>)}
               <button type="button" className={`send-btn ${showStop ? "stop" : ""} ${showMic ? (listening ? "mic listening" : "mic") : ""}`} onClick={mainAction} aria-label={showStop ? "Stop" : listening ? "Confirm voice input" : hasText ? "Send" : "Voice input"}>
                 {showStop ? (<svg width="15" height="15" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>) : listening ? (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>) : showMic ? (<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z" /><path d="M19 10v2a7 7 0 01-14 0v-2" /><line x1="12" y1="19" x2="12" y2="23" /><line x1="8" y1="23" x2="16" y2="23" /></svg>) : (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>)}
               </button>
