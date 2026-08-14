@@ -77,7 +77,7 @@ export function MenuDrawer({ hidden }: { hidden?: boolean }) {
         <div className="drawer-inner">
           <div className="drawer-top">
             <div className="brand">QUIX</div>
-            {searchOpen ? (<input className="new-btn" placeholder="Search your chats..." value={query} autoFocus onChange={(e) => setQuery(e.target.value)} onBlur={() => { if (!query.trim()) setSearchOpen(false); }} />) : (<button className="new-btn" onClick={() => setSearchOpen(true)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>Search chats</button>)}
+            {searchOpen ? (<input className="new-btn" placeholder="Search your chats..." value={query} autoFocus onChange={(e) => setQuery(e.target.value)} onBlur={() => { if (!query.trim()) setSearchOpen(false); }} />) : (<button className="new-btn" onClick={() => setSearchOpen(true)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" /></svg>Search chats</button>)}
           </div>
           <div className="drawer-scroll">
             <div className="hist-label">Recent</div>
@@ -128,7 +128,7 @@ export function AuthScreen() {
     <>
       <style>{auCSS}</style>
       <div id="auth-screen" className={authOpen ? "show" : ""}>
-        <button className="auth-back" onClick={closeAuth}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2} strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg>Back</button>
+        <button className="auth-back" onClick={closeAuth}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg>Back</button>
         <div className="auth-logo">QUIX</div>
         <div className="auth-tagline">Your AI. Your space.</div>
         <div className="auth-tabs">
@@ -207,7 +207,7 @@ export function SettingsPage() {
     <>
       <style>{stCSS}</style>
       <div id="settings-screen" className={settingsOpen ? "show" : ""}>
-        <div className="set-header"><button className="set-back" onClick={closeSettings} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2} strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Profile & Settings</div></div>
+        <div className="set-header"><button className="set-back" onClick={closeSettings} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Profile & Settings</div></div>
         <div className="set-body">
           <div className="avatar-wrap">
             <button className="avatar" onClick={() => fileRef.current?.click()}>
@@ -231,10 +231,10 @@ export function SettingsPage() {
               <div className="set-label">Memory</div>
               <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openMemories())}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2} strokeLinecap="round" strokeLinejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1.3.5 2.6 1.5 3.5.8.8 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1.3.5 2.6 1.5 3.5.8.8 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></svg>
                   Memories{memories.length > 0 ? ` · ${memories.length}` : ""}
                 </div>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2} strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
               </button>
             </div>
           )}
@@ -266,7 +266,7 @@ export function MemoriesPage() {
       <style>{stCSS}</style>
       <style>{mmCSS}</style>
       <div id="memories-screen" className={memoriesOpen ? "show" : ""}>
-        <div className="set-header"><button className="set-back" onClick={closeMemories} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2} strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Memories</div></div>
+        <div className="set-header"><button className="set-back" onClick={closeMemories} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Memories</div></div>
         <div className="set-body">
           {uid ? (
             <>
@@ -339,7 +339,7 @@ export function VoiceCallLayer({ onExit }: { onExit: () => void }) {
     <>
       <style>{vcCSS}</style>
       <div className="voice-call-layer">
-        <button className="voice-call-exit" onClick={onExit} aria-label="Exit voice call"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2} strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
+        <button className="voice-call-exit" onClick={onExit} aria-label="Exit voice call"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
         <iframe className="voice-call-frame" src="https://quix-voice.vercel.app/" title="Voice Call" allow="microphone; camera" allowUserMedia />
       </div>
     </>
