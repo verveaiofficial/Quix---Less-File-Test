@@ -6,6 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes" />
     <meta name="theme-color" content="#000000" />
     <title>Quix Chat</title>
+    
+    <!-- Bunny Fonts: Privacy-friendly, unblocked by Brave/Firefox -->
+    <link rel="preconnect" href="https://fonts.bunny.net" />
+    <link href="https://fonts.bunny.net/css?family=dm-sans:400,500,700|syne:700,800&display=swap" rel="stylesheet" />
+    
     <style>
       *, *::before, *::after { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
       html, body { 
@@ -31,7 +36,7 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Fix for Brave/Firefox viewport height calculation
+      // Viewport height fix for Brave/Firefox drawer scrolling
       function setVH() {
         const vh = window.innerHeight * 0.01;
         document.documentElement.style.setProperty('--vh', `${vh}px`);
