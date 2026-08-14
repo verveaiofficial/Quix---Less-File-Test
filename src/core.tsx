@@ -9,14 +9,15 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.3.1";
+export const APP_VERSION = "v2.4.0";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
 export const GEMINI_MODEL = "gemini-3.5-flash-lite";
 export const IMAGINE_URL = "https://quiximage.lovable.app/";
-export const DEEPTHINK_URL = "https://quix-deepthink.lovable.app/";
 export const CHAT_MODELS = ["flash", "lite", "coder", "thinking", "deepthink"];
+export const DEEPTHINK_MAX_SEARCHES = 20;
+export const DEEPTHINK_MAX_MS = 5 * 60 * 1000;
 
 export const MODELS: Record<string, { name: string; desc: string; key: string }> = {
   flash: { name: "Quix 3 Flash", desc: "Balanced intelligence for daily tasks", key: "VITE_GEMINI_FLASH_API_KEY" },
@@ -74,7 +75,7 @@ export const useUIStore = create<any>((set, get) => ({
   setFontScale: (s: number) => { const c = Math.min(1.3, Math.max(0.85, Math.round(s * 20) / 20)); try { localStorage.setItem(FONT_KEY, String(c)); } catch {} set({ fontScale: c }); },
 }));
 
-/* ================= CHAT (no local persistence) ================= */
+/* ================= CHAT ================= */
 export const useChatStore = create<any>((set) => ({
   activeModel: "thinking", messages: [], isSending: false, currentChatId: null, chatTitle: "New Chat", draft: "",
   setActiveModel: (m: string) => set({ activeModel: m }),
@@ -88,7 +89,7 @@ export const useChatStore = create<any>((set) => ({
   resetChat: () => set({ messages: [], currentChatId: null, chatTitle: "New Chat" }),
 }));
 
-/* ================= PROFILE (debounced DB save, only valid columns) ================= */
+/* ================= PROFILE ================= */
 const PROF_KEY = "quix_profile_v1";
 let profileSaveTimer: any = null;
 export function saveProfileToDB(profile: any) {
@@ -111,12 +112,10 @@ export const useProfileStore = create<any>((set) => ({
   }),
 }));
 
-/* ================= USAGE LIMITS (guest-aware) ================= */
+/* ================= USAGE LIMITS ================= */
 export const LIMITS: Record<string, number> = { flash: 30, lite: 50, thinking: 10, deepthink: 1, coder: 10 };
-const FALLBACK: Record<string, string[]> = { flash: ["lite"], lite: ["flash"], thinking: ["flash", "lite"], deepthink: ["flash", "lite"], coder: ["flash", "lite"] };
+const FALLBACK: Record<string, string[]> = { flash: ["lite"], lite: ["flash"], thinking: ["flash", "lite"], deepthink: [], coder: ["flash", "lite"] };
 function readUsage(): Record<string, number> { try { return JSON.parse(localStorage.getItem("quix_usage_" + dayKey()) || "{}"); } catch { return {}; } }
-
-// guests: only Thinking allowed, capped at GUEST_THINKING_LIMIT; everything else blocked (limit 0)
 function guestLimit(m: string): number { return m === "thinking" ? GUEST_THINKING_LIMIT : 0; }
 
 export const useUsageStore = create<any>((set, get) => ({
@@ -127,13 +126,13 @@ export const useUsageStore = create<any>((set, get) => ({
   resolve: (m: string) => {
     if (get().remaining(m) > 0) return m;
     const sess = useAuthStore.getState().session;
-    if (!sess) return null; // guests never fall back to other models
+    if (!sess) return null;
     for (const f of FALLBACK[m] || []) if (get().remaining(f) > 0) return f;
     return null;
   },
 }));
 
-/* ================= MEMORY (auto nightly sync, last 24h) ================= */
+/* ================= MEMORY ================= */
 export const useMemoryStore = create<any>((set, get) => ({
   memories: [], loadedFor: null,
   loadFor: async (uid: string) => { if (get().loadedFor === uid) return; if (!sb) { set({ memories: [], loadedFor: uid }); return; } const { data } = await sb.from("memories").select("*").eq("user_id", uid).order("created_at", { ascending: true }); set({ memories: (data || []).map((r: any) => ({ id: r.id, text: r.text })), loadedFor: uid }); },
@@ -142,8 +141,6 @@ export const useMemoryStore = create<any>((set, get) => ({
   addAuto: async (uid: string, text: string) => { if (!sb) return; const { data } = await sb.from("memories").insert({ user_id: uid, text, source: "auto" }).select().single(); if (data) set((s: any) => ({ memories: [...s.memories, { id: data.id, text: data.text }] })); },
 }));
 
-// runs once per UTC day; summarizes the user's messages from the LAST 24 HOURS into memories.
-// v2 flag key invalidates old poisoned flags from buggy builds; only marks done on real success.
 export async function runDailyMemorySync() {
   const session = useAuthStore.getState().session;
   if (!session?.user?.id || !sb) return;
@@ -172,7 +169,7 @@ export async function runDailyMemorySync() {
   } catch {}
 }
 
-/* ================= OBSERVATIONS (local only — observations table was DROPPED, never write to it) ================= */
+/* ================= OBSERVATIONS ================= */
 const OBS_LOCAL_KEY = "quix_observations";
 export function stripObs(t: string): string { const i = t.indexOf(OBS_TAG); return i >= 0 ? t.slice(0, i) : t; }
 export function extractObs(t: string): string { const i = t.indexOf(OBS_TAG); return i >= 0 ? t.slice(i + OBS_TAG.length).trim() : ""; }
@@ -183,7 +180,7 @@ export async function saveObservation(summary: string) {
   saveObservationLocal(s);
 }
 
-/* ================= HISTORY (Supabase only) ================= */
+/* ================= HISTORY ================= */
 export async function createChat(title: string): Promise<string | null> { if (!sb) return null; try { const { data, error } = await sb.from("chats").insert({ title }).select().single(); if (error) return null; return data.id; } catch { return null; } }
 export async function insertMessage(chatId: string, msg: ChatMessage) { if (!sb) return; try { await sb.from("messages").insert({ id: msg.id, chat_id: chatId, role: msg.role, model: msg.model, content: msg.content, status: "done", kind: "text" }); await sb.from("chats").update({ updated_at: new Date().toISOString() }).eq("id", chatId); } catch {} }
 export async function fetchChats(): Promise<any[]> { if (!sb) return []; try { const { data } = await sb.from("chats").select("*").order("updated_at", { ascending: false }).limit(50); return data || []; } catch { return []; } }
@@ -231,6 +228,116 @@ export async function askGeminiStream(model: string, prompt: string, opts: { sea
     }
     h.onDone({ text, thoughts, sources });
   } finally { controller = null; }
+}
+
+/* ================= TAVILY SEARCH ================= */
+export interface TavilyResult { title: string; url: string; content: string }
+
+export async function tavilySearch(query: string): Promise<TavilyResult[]> {
+  const key = env().VITE_TAVILY_API_KEY || "";
+  if (!key) throw new Error("NO TAVILY API KEY (add VITE_TAVILY_API_KEY in Vercel).");
+  const bodyBase = { query, search_depth: "advanced", max_results: 5 };
+  let res = await fetch("https://api.tavily.com/search", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` }, body: JSON.stringify(bodyBase) });
+  if (res.status === 401 || res.status === 403) {
+    res = await fetch("https://api.tavily.com/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...bodyBase, api_key: key }) });
+  }
+  if (!res.ok) throw new Error("Tavily search failed (" + res.status + ")");
+  const d = await res.json();
+  return (d.results || []).map((r: any) => ({ title: r.title || r.url, url: r.url, content: String(r.content || "").slice(0, 1200) }));
+}
+
+/* ================= DEEPTHINK AGENT ================= */
+async function geminiTurnStream(apiKey: string, contents: any[], onText: (t: string) => void): Promise<string> {
+  controller = new AbortController();
+  const signal = controller.signal;
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents }), signal });
+  if (!res.ok || !res.body) { const d = await res.json().catch(() => null); throw new Error(d?.error?.message || "Gemini request failed"); }
+  const reader = res.body.getReader(); const dec = new TextDecoder();
+  let buf = "", text = "";
+  while (true) {
+    const { done, value } = await reader.read(); if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n"); buf = lines.pop() || "";
+    for (const line of lines) {
+      const t = line.trim(); if (!t.startsWith("data:")) continue;
+      const payload = t.slice(5).trim(); if (!payload) continue;
+      try {
+        const json = JSON.parse(payload);
+        (json?.candidates?.[0]?.content?.parts || []).forEach((p: any) => { if (!p?.thought && p?.text) { text += p.text; onText(text); } });
+      } catch {}
+    }
+  }
+  return text;
+}
+
+function buildDeepThinkSystem(question: string, history: ChatMessage[]): string {
+  const blocks: string[] = [];
+  blocks.push("# DeepThink — Autonomous Research Agent\nYou are DeepThink, Quix's deep research mode. You autonomously research the live web, then deliver one comprehensive answer.");
+  blocks.push("## SEARCH TOOL\nWhen you need live information, output a line EXACTLY like this and STOP right after it:\n[[SEARCH: your precise query]]\nThe system runs the search and returns numbered results. Never invent results.");
+  blocks.push("You may search at most " + DEEPTHINK_MAX_SEARCHES + " times and you have about 5 minutes total. Decide yourself WHEN and WHAT to search.");
+  blocks.push("## BETWEEN SEARCHES\nThink out loud as short bullet lines starting with '• '. Identify gaps and pick the next query.");
+  blocks.push("## FINAL ANSWER\nWhen evidence is enough, write the final answer in clean markdown WITHOUT any [[SEARCH:]] line. Cite sources inline like [1] using the numbered results you received.");
+  blocks.push("# Global Knowledge\n" + globalKnowledge);
+  blocks.push("# Global Instructions\n" + globalInstructions);
+  blocks.push("# DeepThink Instructions\n" + deepthinkMd);
+  const sess = useAuthStore.getState().session;
+  if (sess?.user) { const meta = (sess.user.user_metadata || {}) as any; const name = meta.full_name || meta.name || ""; blocks.push(`--- User identity ---\n${name ? `Name: ${name}\n` : ""}${sess.user.email ? `Email: ${sess.user.email}\n` : ""}Use it naturally.`); }
+  const uid = sess?.user?.id;
+  if (uid) { const ms = useMemoryStore.getState(); if (ms.loadedFor !== uid) ms.loadFor(uid); const mems = useMemoryStore.getState().memories; if (mems.length) blocks.push("--- Memories about this user ---\n" + mems.map((m: any) => `• ${m.text}`).join("\n")); }
+  const hist = history.slice(-6).map((m) => `${m.role === "user" ? "User" : "Quix"}: ${stripObs(m.content)}`).join("\n");
+  if (hist) blocks.push(`--- Conversation so far ---\n${hist}`);
+  blocks.push(`--- USER'S RESEARCH QUESTION ---\n${question}`);
+  blocks.push("Begin. Think, search when needed, then answer.");
+  return blocks.join("\n\n");
+}
+
+export async function runDeepThink(question: string, history: ChatMessage[], h: { onThoughts: (t: string) => void; onSources: (s: SourceItem[]) => void; onDone: (r: GeminiResult) => void }): Promise<void> {
+  const apiKey = apiKeyFor("deepthink");
+  if (!apiKey) throw new Error("NO API KEY FOR DEEPTHINK.");
+  const started = Date.now();
+  const sources: SourceItem[] = [];
+  const seen = new Set<string>();
+  let searchCount = 0;
+  let log = "";
+  let finalText = "";
+  const contents: any[] = [{ role: "user", parts: [{ text: buildDeepThinkSystem(question, history) }] }];
+  try {
+    while (true) {
+      const overTime = Date.now() - started > DEEPTHINK_MAX_MS;
+      const turn = await geminiTurnStream(apiKey, contents, (t) => h.onThoughts(log + t));
+      const m = turn.match(/\[\[SEARCH:\s*([^\]]+)\]\]/);
+      if (m && searchCount < DEEPTHINK_MAX_SEARCHES && !overTime) {
+        const query = m[1].trim();
+        const before = turn.slice(0, m.index).trim();
+        searchCount++;
+        log += (before ? before + "\n" : "") + `• Searching web (${searchCount}/${DEEPTHINK_MAX_SEARCHES}): "${query}"\n`;
+        h.onThoughts(log);
+        contents.push({ role: "model", parts: [{ text: turn }] });
+        try {
+          const results = await tavilySearch(query);
+          results.forEach((r) => { if (!seen.has(r.url)) { seen.add(r.url); sources.push({ title: r.title, uri: r.url }); } });
+          h.onSources([...sources]);
+          const block = results.map((r, i) => `[${i + 1}] ${r.title}\n${r.url}\n${r.content}`).join("\n\n");
+          contents.push({ role: "user", parts: [{ text: `SEARCH RESULTS for "${query}":\n${block || "(no results)"}\n\nContinue research ([[SEARCH: query]]) or write your final answer in clean markdown.` }] });
+        } catch (e: any) {
+          contents.push({ role: "user", parts: [{ text: `Search failed (${e?.message || "error"}). Continue with what you know or try another query.` }] });
+        }
+        continue;
+      }
+      if (m) {
+        contents.push({ role: "model", parts: [{ text: turn }] });
+        contents.push({ role: "user", parts: [{ text: (overTime ? "Time limit reached. " : "Search limit reached. ") + "Write your final answer now in clean markdown." }] });
+        finalText = (await geminiTurnStream(apiKey, contents, (t) => h.onThoughts(log + t))).replace(/\[\[SEARCH:[^\]]*\]\]/g, "");
+        break;
+      }
+      finalText = turn;
+      break;
+    }
+  } catch (e: any) {
+    if (!finalText) finalText = e?.name === "AbortError" ? "Research stopped." : `DeepThink error: ${e?.message || e}`;
+  } finally { controller = null; }
+  h.onThoughts(log);
+  h.onDone({ text: finalText || "Research complete.", thoughts: log, sources });
 }
 
 /* ================= PROMPT ================= */
