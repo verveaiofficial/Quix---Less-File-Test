@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.2.0";
+export const APP_VERSION = "v2.3.1";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -23,7 +23,7 @@ export const MODELS: Record<string, { name: string; desc: string; key: string }>
   lite: { name: "Quix 3 Lite", desc: "Instant replies", key: "VITE_GEMINI_LITE_API_KEY" },
   coder: { name: "Quix 3 Coder", desc: "Build apps and sites", key: "VITE_GEMINI_CODER_API_KEY" },
   thinking: { name: "Quix 3.1 Thinking", desc: "Advanced reasoning", key: "VITE_GEMINI_THINKING_API_KEY" },
-  deepthink: { name: "DeepThink", desc: "Deep research & reasoning", key: "VITE_GEMINI_DEEPTHINK_API_KEY" },
+  deepthink: { name: "DeepThink", desc: "5 minutes of deep research and reasoning", key: "VITE_GEMINI_DEEPTHINK_API_KEY" },
 };
 
 const env = () => (import.meta as any).env || {};
@@ -60,12 +60,14 @@ export const useAuthStore = create<any>((set) => ({
 const FONT_KEY = "quix_font_scale";
 function loadScale(): number { try { const v = parseFloat(localStorage.getItem(FONT_KEY) || "1"); return isNaN(v) ? 1 : v; } catch { return 1; } }
 export const useUIStore = create<any>((set, get) => ({
-  drawerOpen: false, authOpen: false, settingsOpen: false, viewMode: "chat", fontScale: loadScale(), drawerReturn: false,
+  drawerOpen: false, authOpen: false, settingsOpen: false, memoriesOpen: false, viewMode: "chat", fontScale: loadScale(), drawerReturn: false,
   setDrawerOpen: (v: boolean) => set({ drawerOpen: v }),
   openAuth: () => set({ authOpen: true }),
   openSettings: () => set({ settingsOpen: true }),
   openAuthFromDrawer: () => set({ authOpen: true, drawerReturn: true }),
   openSettingsFromDrawer: () => set({ settingsOpen: true, drawerReturn: true }),
+  openMemories: () => set({ memoriesOpen: true }),
+  closeMemories: () => set({ memoriesOpen: false }),
   closeAuth: () => { const r = get().drawerReturn; set({ authOpen: false, drawerReturn: false }); if (r) setTimeout(() => set({ drawerOpen: true }), 250); },
   closeSettings: () => { const r = get().drawerReturn; set({ settingsOpen: false, drawerReturn: false }); if (r) setTimeout(() => set({ drawerOpen: true }), 250); },
   setViewMode: (v: string) => set({ viewMode: v }),
@@ -86,11 +88,27 @@ export const useChatStore = create<any>((set) => ({
   resetChat: () => set({ messages: [], currentChatId: null, chatTitle: "New Chat" }),
 }));
 
-/* ================= PROFILE ================= */
+/* ================= PROFILE (debounced DB save, only valid columns) ================= */
 const PROF_KEY = "quix_profile_v1";
+let profileSaveTimer: any = null;
+export function saveProfileToDB(profile: any) {
+  if (profileSaveTimer) clearTimeout(profileSaveTimer);
+  profileSaveTimer = setTimeout(async () => {
+    const session = useAuthStore.getState().session;
+    if (!session?.user?.id || !sb) return;
+    try {
+      await sb.from("profiles").upsert({ user_id: session.user.id, name: profile.name || "", username: profile.username || "", email: profile.email || "", avatar: profile.avatar || null }, { onConflict: "user_id" });
+    } catch {}
+  }, 800);
+}
 export const useProfileStore = create<any>((set) => ({
-  profile: (() => { try { const raw = localStorage.getItem(PROF_KEY); if (raw) return { name: "", username: "", email: "", dob: "", avatar: null, ...JSON.parse(raw) }; } catch {} return { name: "", username: "", email: "", dob: "", avatar: null }; })(),
-  setProfile: (patch: any) => set((s: any) => { const profile = { ...s.profile, ...patch }; try { localStorage.setItem(PROF_KEY, JSON.stringify(profile)); } catch {} return { profile }; }),
+  profile: (() => { try { const raw = localStorage.getItem(PROF_KEY); if (raw) return { name: "", username: "", email: "", avatar: null, ...JSON.parse(raw) }; } catch {} return { name: "", username: "", email: "", avatar: null }; })(),
+  setProfile: (patch: any) => set((s: any) => {
+    const profile = { ...s.profile, ...patch };
+    try { localStorage.setItem(PROF_KEY, JSON.stringify(profile)); } catch {}
+    saveProfileToDB(profile);
+    return { profile };
+  }),
 }));
 
 /* ================= USAGE LIMITS (guest-aware) ================= */
@@ -124,28 +142,37 @@ export const useMemoryStore = create<any>((set, get) => ({
   addAuto: async (uid: string, text: string) => { if (!sb) return; const { data } = await sb.from("memories").insert({ user_id: uid, text, source: "auto" }).select().single(); if (data) set((s: any) => ({ memories: [...s.memories, { id: data.id, text: data.text }] })); },
 }));
 
-// runs once per UTC day; summarizes the user's messages from the LAST 24 HOURS into memories
+// runs once per UTC day; summarizes the user's messages from the LAST 24 HOURS into memories.
+// v2 flag key invalidates old poisoned flags from buggy builds; only marks done on real success.
 export async function runDailyMemorySync() {
   const session = useAuthStore.getState().session;
   if (!session?.user?.id || !sb) return;
   const uid = session.user.id;
   const today = dayKey();
-  const key = "quix_last_summary_" + uid;
+  const key = "quix_mem_sync_v2_" + uid;
   if (localStorage.getItem(key) === today) return;
   try {
     const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-    const { data: msgs } = await sb.from("messages").select("role,content,created_at").eq("user_id", uid).gte("created_at", since).order("created_at", { ascending: true }).limit(60);
-    const userLines = (msgs || []).filter((m: any) => m.role === "user").map((m: any) => m.content);
+    const { data: msgs, error } = await sb.from("messages").select("role,content,created_at").gte("created_at", since).order("created_at", { ascending: true }).limit(60);
+    if (error || !msgs) return;
+    const userLines = msgs.filter((m: any) => m.role === "user").map((m: any) => m.content).filter((t: string) => t && t.trim());
     if (!userLines.length) { localStorage.setItem(key, today); return; }
     let summary = "";
-    await askGeminiStream("flash", "Below are this user's messages from the last 24 hours. Output 1-5 short bullet lines, each a standalone memory sentence about their preferences, mood, projects or facts. No intro, no markdown.\n\n" + userLines.join("\n").slice(0, 6000), { search: false }, { onThoughts: () => {}, onText: (t) => { summary = t; }, onDone: (r) => { summary = r.text; } });
+    const prompt = "Below are this user's messages from the last 24 hours. Output 1-5 short bullet lines, each a standalone memory sentence about their preferences, mood, projects or facts. No intro, no markdown.\n\n" + userLines.join("\n").slice(0, 6000);
+    const handlers = { onThoughts: () => {}, onText: (t: string) => { summary = t; }, onDone: (r: any) => { summary = r.text; } };
+    try {
+      await askGeminiStream("flash", prompt, { search: false }, handlers);
+    } catch {
+      summary = "";
+      await askGeminiStream("lite", prompt, { search: false }, handlers);
+    }
     const lines = summary.split("\n").map((l: string) => l.replace(/^[\s•\-–\d.)]+/, "").trim()).filter((l: string) => l.length > 8);
     for (const line of lines.slice(0, 5)) await useMemoryStore.getState().addAuto(uid, line);
+    localStorage.setItem(key, today);
   } catch {}
-  localStorage.setItem(key, today);
 }
 
-/* ================= OBSERVATIONS (training data) ================= */
+/* ================= OBSERVATIONS (local only — observations table was DROPPED, never write to it) ================= */
 const OBS_LOCAL_KEY = "quix_observations";
 export function stripObs(t: string): string { const i = t.indexOf(OBS_TAG); return i >= 0 ? t.slice(0, i) : t; }
 export function extractObs(t: string): string { const i = t.indexOf(OBS_TAG); return i >= 0 ? t.slice(i + OBS_TAG.length).trim() : ""; }
@@ -154,8 +181,6 @@ export async function saveObservation(summary: string) {
   const s = summary.trim();
   if (!s) return;
   saveObservationLocal(s);
-  const sess = useAuthStore.getState().session;
-  if (sess?.user?.id && sb) { try { await sb.from("observations").insert({ user_id: sess.user.id, summary: s }); } catch {} }
 }
 
 /* ================= HISTORY (Supabase only) ================= */

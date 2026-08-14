@@ -39,7 +39,19 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
   const showStop = isDeepThink ? !!dtRunning : isSending;
   const showMic = !showStop && !hasText;
 
-  const pickModel = (id: string) => { if (isGuest && id !== "thinking") { setModelMenuOpen(false); useUIStore.getState().openAuth(); return; } setActiveModel(id); setModelMenuOpen(false); };
+  const pickModel = (id: string) => {
+    // DeepThink is locked for everyone – do nothing if clicked
+    if (id === "deepthink") return;
+    // For guests, only Thinking is allowed; other models require sign-in
+    if (isGuest && id !== "thinking") {
+      setModelMenuOpen(false);
+      useUIStore.getState().openAuth();
+      return;
+    }
+    setActiveModel(id);
+    setModelMenuOpen(false);
+  };
+
   const send = () => { const text = inputValue.trim(); if (!text) return; if (isDeepThink) { onDeepThinkSend?.(text); setInputValue(""); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } return; } if (attachments.length === 0 && !text) return; onSend?.(text, attachments); setInputValue(""); setAttachments([]); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } };
   const stop = () => { if (isDeepThink) { onDeepThinkStop?.(); return; } abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
   const mainAction = () => { if (showStop) return stop(); if (hasText) return send(); return toggleMic(); };
@@ -72,12 +84,21 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
                 </button>
                 <div className={`pop-menu ${modelMenuOpen ? "show" : ""}`}>
                   {CHAT_MODELS.map((id) => {
-                    const locked = isGuest && id !== "thinking";
+                    // DeepThink is always locked (not clickable)
+                    const isDeepThinkModel = id === "deepthink";
+                    // For guests, only Thinking is allowed, others are locked
+                    const locked = isDeepThinkModel || (isGuest && id !== "thinking");
+                    // Only show "Sign in" for guest-locked models that are NOT DeepThink
+                    const showSignIn = locked && isGuest && !isDeepThinkModel;
                     return (
                       <div key={id} className={`model-item ${locked ? "locked" : ""}`} onClick={(e) => { e.stopPropagation(); pickModel(id); }}>
                         {activeModel === id && !locked ? (<svg viewBox="0 0 24 24" fill="none" className="model-check" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>) : locked ? (<span dangerouslySetInnerHTML={{ __html: lockSvg }} />) : (<div style={{ width: 15, flexShrink: 0 }} />)}
                         <div className="model-item-content">
-                          <span className="model-title">{MODELS[id].name}{id === "deepthink" && <span className="beta-tag">Beta</span>}{locked && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}</span>
+                          <span className="model-title">
+                            {MODELS[id].name}
+                            {isDeepThinkModel && <span className="beta-tag">Coming soon</span>}
+                            {showSignIn && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}
+                          </span>
                           <span className="model-desc">{MODELS[id].desc}</span>
                         </div>
                       </div>
