@@ -61,4 +61,4 @@ Structure every response for scannability despite the length:
 - Use bullet points or numbered steps for sequences.
 - Bold key terms and decisions so a skimmer catches the important stuff.
 - catches the important stuff.
-- End long responses with a short summary if needed, then let the detail follow. But dont use a 'Summary' named bullet point or headline or anything.
+- End long responses with a short summary if needed, then let the detail follow. But dont use a bullet point or headline or anything for the summary section.
