@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.9.6";
+export const APP_VERSION = "v2.9.7";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -53,15 +53,15 @@ let sb: any = null;
 try { const e = env(); if (e.VITE_SUPABASE_URL && e.VITE_SUPABASE_ANON_KEY) { sb = createClient(e.VITE_SUPABASE_URL, e.VITE_SUPABASE_ANON_KEY); } } catch { sb = null; }
 export const supabase = () => sb;
 
-/* ================= AUTH ================= */
+/* ================= AUTH (resets per-user stores on switch) ================= */
 export const useAuthStore = create<any>((set) => ({
   session: null,
   init: () => {
     if (!sb) return;
-    sb.auth.getSession().then(({ data }: any) => set({ session: data?.session || null }));
-    sb.auth.onAuthStateChange((_e: any, s: any) => { set({ session: s }); });
+    sb.auth.getSession().then(({ data }: any) => { set({ session: data?.session || null }); syncUserStores(data?.session?.user?.id ?? null); });
+    sb.auth.onAuthStateChange((_e: any, s: any) => { set({ session: s }); syncUserStores(s?.user?.id ?? null); });
   },
-  signOut: async () => { if (sb) await sb.auth.signOut(); set({ session: null }); },
+  signOut: async () => { if (sb) await sb.auth.signOut(); set({ session: null }); syncUserStores(null); },
 }));
 
 /* ================= UI ================= */
@@ -96,8 +96,10 @@ export const useChatStore = create<any>((set) => ({
   resetChat: () => set({ messages: [], currentChatId: null, chatTitle: "New Chat" }),
 }));
 
-/* ================= PROFILE ================= */
+/* ================= PROFILE (per-user) ================= */
 const PROF_KEY = "quix_profile_v1";
+const profKey = (uid: string) => `${PROF_KEY}_${uid}`;
+const emptyProfile = () => ({ name: "", email: "", avatar: null });
 let profileSaveTimer: any = null;
 export function saveProfileToDB(profile: any) {
   if (profileSaveTimer) clearTimeout(profileSaveTimer);
@@ -110,26 +112,39 @@ export function saveProfileToDB(profile: any) {
   }, 800);
 }
 export const useProfileStore = create<any>((set) => ({
-  profile: (() => { try { const raw = localStorage.getItem(PROF_KEY); if (raw) { const p = { name: "", email: "", avatar: null, ...JSON.parse(raw) }; delete (p as any).username; return p; } } catch {} return { name: "", email: "", avatar: null }; })(),
+  profile: emptyProfile(),
+  loadedFor: null as string | null,
+  loadFor: (uid: string | null) => {
+    if (!uid) { set({ profile: emptyProfile(), loadedFor: null }); return; }
+    try {
+      const raw = localStorage.getItem(profKey(uid));
+      const p = raw ? { ...emptyProfile(), ...JSON.parse(raw) } : emptyProfile();
+      delete (p as any).username;
+      set({ profile: p, loadedFor: uid });
+    } catch { set({ profile: emptyProfile(), loadedFor: uid }); }
+  },
   setProfile: (patch: any) => set((s: any) => {
     const profile = { ...s.profile, ...patch };
-    try { localStorage.setItem(PROF_KEY, JSON.stringify(profile)); } catch {}
-    saveProfileToDB(profile);
+    const uid = useAuthStore.getState().session?.user?.id;
+    if (uid) { try { localStorage.setItem(profKey(uid), JSON.stringify(profile)); } catch {} saveProfileToDB(profile); }
     return { profile };
   }),
 }));
 
-/* ================= USAGE LIMITS (-1 = unlimited) ================= */
+/* ================= USAGE (per-user per-day) ================= */
 export const LIMITS: Record<string, number> = { flash: 30, lite: 50, thinking: 10, deepthink: 1, coder: 10 };
 const FALLBACK: Record<string, string[]> = { flash: ["lite"], lite: ["flash"], thinking: ["flash", "lite"], deepthink: [], coder: ["flash", "lite"] };
-function readUsage(): Record<string, number> { try { return JSON.parse(localStorage.getItem("quix_usage_" + dayKey()) || "{}"); } catch { return {}; } }
+const usageKey = (uid: string | null) => "quix_usage_" + dayKey() + "_" + (uid || "guest");
+function readUsageFor(uid: string | null): Record<string, number> { try { return JSON.parse(localStorage.getItem(usageKey(uid)) || "{}"); } catch { return {}; } }
 function guestLimit(m: string): number { return m === "thinking" ? GUEST_THINKING_LIMIT : 0; }
 
 export const useUsageStore = create<any>((set, get) => ({
-  usage: readUsage(),
+  usage: readUsageFor(null),
+  user: null as string | null,
+  setUser: (uid: string | null) => set({ user: uid, usage: readUsageFor(uid) }),
   limitFor: (m: string) => { const sess = useAuthStore.getState().session; return sess ? (LIMITS[m] ?? 30) : guestLimit(m); },
   remaining: (m: string) => { const lim = get().limitFor(m); if (lim < 0) return Infinity; return Math.max(0, lim - (get().usage[m] ?? 0)); },
-  consume: (m: string) => { const base = readUsage(); const u = { ...base, [m]: (base[m] ?? 0) + 1 }; try { localStorage.setItem("quix_usage_" + dayKey(), JSON.stringify(u)); } catch {} set({ usage: u }); },
+  consume: (m: string) => { const uid = get().user; const base = readUsageFor(uid); const u = { ...base, [m]: (base[m] ?? 0) + 1 }; try { localStorage.setItem(usageKey(uid), JSON.stringify(u)); } catch {} set({ usage: u }); },
   resolve: (m: string) => {
     if (get().remaining(m) > 0) return m;
     const sess = useAuthStore.getState().session;
@@ -142,11 +157,19 @@ export const useUsageStore = create<any>((set, get) => ({
 /* ================= MEMORY ================= */
 export const useMemoryStore = create<any>((set, get) => ({
   memories: [], loadedFor: null,
+  reset: () => set({ memories: [], loadedFor: null }),
   loadFor: async (uid: string) => { if (get().loadedFor === uid) return; if (!sb) { set({ memories: [], loadedFor: uid }); return; } const { data } = await sb.from("memories").select("*").eq("user_id", uid).order("created_at", { ascending: true }); set({ memories: (data || []).map((r: any) => ({ id: r.id, text: r.text })), loadedFor: uid }); },
   addMemory: async (uid: string, text: string) => { const t = text.trim(); if (!t || !sb) return; const { data } = await sb.from("memories").insert({ user_id: uid, text: t, source: "manual" }).select().single(); if (data) set((s: any) => ({ memories: [...s.memories, { id: data.id, text: data.text }] })); },
   removeMemory: async (uid: string, id: string) => { if (!sb) return; await sb.from("memories").delete().eq("id", id); set((s: any) => ({ memories: s.memories.filter((m: any) => m.id !== id) })); },
   addAuto: async (uid: string, text: string) => { if (!sb) return; const { data } = await sb.from("memories").insert({ user_id: uid, text, source: "auto" }).select().single(); if (data) set((s: any) => ({ memories: [...s.memories, { id: data.id, text: data.text }] })); },
 }));
+
+// runs on sign-in / sign-out / account switch so no data leaks between accounts
+function syncUserStores(uid: string | null) {
+  try { useProfileStore.getState().loadFor(uid); } catch {}
+  try { useUsageStore.getState().setUser(uid); } catch {}
+  try { useMemoryStore.getState().reset(); } catch {}
+}
 
 export async function runDailyMemorySync() {
   const session = useAuthStore.getState().session;
@@ -265,7 +288,7 @@ export async function tavilySearch(query: string, controller?: AbortController):
   }
 }
 
-/* ================= DEEPTHINK AGENT (per-request controller) ================= */
+/* ================= DEEPTHINK AGENT ================= */
 const SEARCH_RE = /\[\[SEARCH:?\s*([^\]\n]+?)\s*\]\]/i;
 function fmtTime(sec: number): string { const m = Math.floor(sec / 60); const s = sec % 60; return `${m}:${s < 10 ? "0" : ""}${s}`; }
 
