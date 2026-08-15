@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.9.3";
+export const APP_VERSION = "v2.9.4";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -381,12 +381,11 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
       const m = turn.match(SEARCH_RE);
       const turnClean = cleanForLog(turn);
 
-      // 1) search allowed -> do it, log REAL per-search numbers
+      // 1) search allowed -> do it
       if (m && searchCount < DEEPTHINK_MAX_SEARCHES && !overTime && !finalRequested) {
         const query = m[1].trim();
         const before = cleanForLog(turn.slice(0, m.index));
         searchCount++;
-        const beforeLen = sources.length;
         log += (before ? before + "\n" : "") + `• Searching web (${searchCount}/${DEEPTHINK_MAX_SEARCHES}): "${query}"...\n`;
         h.onThoughts(log);
         contents.push({ role: "model", parts: [{ text: turn }] });
@@ -400,16 +399,11 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
             if (existingIdx > -1) { num = existingIdx + 1; } else { sources.push({ title: r.title, uri: r.url, desc: r.content.slice(0, 180) }); num = sources.length; }
             linesOut.push(`[${num}] ${r.title}\n${r.url}\n${r.content}`);
           });
-          const added = sources.length - beforeLen;
-          log += `• Found ${results.length} pages, ${added} new — ${sources.length} sources total\n`;
-          h.onThoughts(log);
           h.onSources([...sources]);
           const block = linesOut.join("\n\n");
           contents.push({ role: "user", parts: [{ text: `SEARCH RESULTS for "${query}":\n${block || "(no results)"}\n\nNow ANALYZE what you just learned in 3-6 bullets (key facts, numbers, contradictions, gaps). Then choose the single most valuable NEXT query from these findings and output exactly one [[SEARCH: query]] line. Do NOT repeat an earlier query. Do NOT draft the final answer.` }] });
         } catch (e: any) {
           if (e?.name === "AbortError" || stopped) { finalText = finalText || "Research stopped."; break; }
-          log += `• Search failed — retrying with what we have...\n`;
-          h.onThoughts(log);
           contents.push({ role: "user", parts: [{ text: `Search failed (${e?.message || "error"}). Continue with what you know or try another query.` }] });
         }
         for (let s = 0; s < 10; s++) { if (stopped) break; await sleep(1000); }
