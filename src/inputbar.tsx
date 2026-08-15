@@ -166,7 +166,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
               {Array.from({ length: WAVE_BARS }).map((_, i) => (<span key={i} style={{ animationDelay: `${(i % 8) * 0.09}s` }} />))}
             </div>
           ) : (
-            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research anything..." : "Ask Quix..."} rows={1} value={inputValue} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} onBlur={() => { if (!menuOpen) setBottomOffset(0); }} />
+            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research..." : "Ask Quix..."} rows={1} value={inputValue} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} onBlur={() => { if (!menuOpen) setBottomOffset(0); }} />
           )}
           <div className="action-row">
             <div className="action-left">
