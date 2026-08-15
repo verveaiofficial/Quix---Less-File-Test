@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.9.0";
+export const APP_VERSION = "v2.9.1";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -40,7 +40,7 @@ export const dayKey = () => new Date().toISOString().slice(0, 10);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /* ================= TYPES ================= */
-export interface SourceItem { title: string; uri: string }
+export interface SourceItem { title: string; uri: string; desc?: string }
 export interface AttachmentMeta { name: string; kind: "image" | "pdf" | "text"; previewUrl?: string }
 export interface ChatMessage {
   id: string; role: "user" | "ai"; model: string; content: string; thoughts?: string;
@@ -237,7 +237,7 @@ export async function askGeminiStream(model: string, prompt: string, opts: { sea
   } finally { controller = null; }
 }
 
-/* ================= TAVILY SEARCH (10 results per search) ================= */
+/* ================= TAVILY SEARCH ================= */
 export interface TavilyResult { title: string; url: string; content: string }
 
 function mapTavily(d: any): TavilyResult[] {
@@ -268,7 +268,6 @@ export async function tavilySearch(query: string): Promise<TavilyResult[]> {
 const SEARCH_RE = /\[\[SEARCH:?\s*([^\]\n]+?)\s*\]\]/i;
 function fmtTime(sec: number): string { const m = Math.floor(sec / 60); const s = sec % 60; return `${m}:${s < 10 ? "0" : ""}${s}`; }
 
-// strips SEARCH tokens + empty bullet junk so the log never shows "• •" or raw tokens
 function cleanForLog(t: string): string {
   return t.replace(/\[\[SEARCH:?[^\]\n]*\]\]/gi, "").split("\n").map((l) => l.trim()).filter((l) => l.length > 2 && l !== "•" && l !== "-" && l !== "*").join("\n");
 }
@@ -322,7 +321,7 @@ function buildDeepThinkSystem(question: string, history: ChatMessage[]): string 
   const blocks: string[] = [];
   blocks.push("# DeepThink — Autonomous Research Agent\nYou are DeepThink, Quix's deep research mode. You autonomously research the live web for several minutes, then deliver one comprehensive, expert-level answer.");
   blocks.push("## SEARCH TOOL\nWhen you need live information, output a line EXACTLY like this and STOP right after it:\n[[SEARCH: your precise query]]\nThe system runs the search and returns numbered results. Never invent results.");
-  blocks.push("## THINK-SEARCH-THINK RHYTHM (CRITICAL)\n- NEVER chain searches back-to-back. After EVERY search you MUST write 3-6 analysis bullets about what you actually learned (key facts, numbers, contradictions, gaps) BEFORE choosing the next query.\n- NEVER pre-plan all queries. Each next query must be chosen from what you JUST learned.\n- NEVER repeat or lightly paraphrase an earlier query. If an angle dies, switch angle completely.\n- You MUST run at least " + DEEPTHINK_MIN_SEARCHES + " searches and MAY run up to " + DEEPTHINK_MAX_SEARCHES + ".\n- FIRST output a short plan as bullets (• ) listing 4-8 sub-questions.\n- Cross-check important claims across multiple sources.");
+  blocks.push("## THINK-SEARCH-THINK RHYTHM (CRITICAL)\n- NEVER chain searches back-to-back. After EVERY search you MUST write 3-6 analysis bullets about what you actually learned (key facts, numbers, contradictions, gaps) BEFORE choosing the next query.\n- NEVER pre-plan all queries. Each next query must be chosen from what you JUST learned.\n- NEVER repeat or lightly paraphrase an earlier query. If an angle dies, switch angle completely.\n- NEVER draft the final answer before the system tells you the research phase is over. If you catch yourself writing conclusions early, stop and convert them into new search queries instead.\n- You MUST run at least " + DEEPTHINK_MIN_SEARCHES + " searches and MAY run up to " + DEEPTHINK_MAX_SEARCHES + ".\n- FIRST output a short plan as bullets (• ) listing 4-8 sub-questions.\n- Cross-check important claims across multiple sources.");
   blocks.push("## FINAL ANSWER\nOnly when the system tells you the research phase is over, write the final answer in clean markdown WITHOUT any [[SEARCH:]] line. Cite sources inline like [1]. Make it thorough, practical, well-structured. Do NOT talk about passes or system timers in the answer.");
   blocks.push("# Global Knowledge\n" + globalKnowledge);
   blocks.push("# Global Instructions\n" + globalInstructions);
@@ -383,7 +382,7 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
       const m = turn.match(SEARCH_RE);
       const turnClean = cleanForLog(turn);
 
-      // 1) search allowed -> do it
+      // 1) search allowed -> do it (paced so research spans the full window)
       if (m && searchCount < DEEPTHINK_MAX_SEARCHES && !overTime && !finalRequested) {
         const query = m[1].trim();
         const before = cleanForLog(turn.slice(0, m.index));
@@ -394,18 +393,20 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
         try {
           const results = await tavilySearch(query);
           if (stopped) { finalText = finalText || "Research stopped."; break; }
-          results.forEach((r) => { if (!seen.has(r.url)) { seen.add(r.url); sources.push({ title: r.title, uri: r.url }); } });
+          results.forEach((r) => { if (!seen.has(r.url)) { seen.add(r.url); sources.push({ title: r.title, uri: r.url, desc: r.content.slice(0, 180) }); } });
           h.onSources([...sources]);
           const block = results.map((r, i) => `[${i + 1}] ${r.title}\n${r.url}\n${r.content}`).join("\n\n");
-          contents.push({ role: "user", parts: [{ text: `SEARCH RESULTS for "${query}":\n${block || "(no results)"}\n\nNow ANALYZE what you just learned in 3-6 bullets (key facts, numbers, contradictions, gaps). Then choose the single most valuable NEXT query from these findings and output exactly one [[SEARCH: query]] line. Do NOT repeat an earlier query.` }] });
+          contents.push({ role: "user", parts: [{ text: `SEARCH RESULTS for "${query}":\n${block || "(no results)"}\n\nNow ANALYZE what you just learned in 3-6 bullets (key facts, numbers, contradictions, gaps). Then choose the single most valuable NEXT query from these findings and output exactly one [[SEARCH: query]] line. Do NOT repeat an earlier query. Do NOT draft the final answer.` }] });
         } catch (e: any) {
           if (e?.name === "AbortError" || stopped) { finalText = finalText || "Research stopped."; break; }
           contents.push({ role: "user", parts: [{ text: `Search failed (${e?.message || "error"}). Continue with what you know or try another query.` }] });
         }
+        // breathe between searches so 20 searches span ~5 minutes
+        for (let s = 0; s < 10; s++) { if (stopped) break; await sleep(1000); }
         continue;
       }
 
-      // 2) under minimum time -> deepen (analysis passes, never raw search chaining)
+      // 2) under minimum time -> force more searching / deepening, never early answers
       if (underMin && !overTime && nudges < 60 && !finalRequested) {
         const stepIdx = nudges % DEEPEN_STEPS.length;
         nudges++;
@@ -413,14 +414,14 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
         const elapsedSec = Math.round(elapsedMs / 1000);
         log += `• ${fmtTime(elapsedSec)} — deepening pass ${nudges} (${searchCount} searches done)...\n`;
         h.onThoughts(log);
-        const needSearches = searchCount < DEEPTHINK_MIN_SEARCHES;
+        const canSearch = searchCount < DEEPTHINK_MAX_SEARCHES;
         contents.push({ role: "model", parts: [{ text: turn }] });
-        contents.push({ role: "user", parts: [{ text: `NOT ENOUGH RESEARCH TIME YET — ${elapsedSec}s of ${Math.round(DEEPTHINK_MIN_MS / 1000)}s minimum. Do NOT write the final answer yet. ${needSearches ? "Run more searches first ([[SEARCH: query]]), but analyze results before each new search. " : ""}${DEEPEN_STEPS[stepIdx]}` }] });
+        contents.push({ role: "user", parts: [{ text: `NOT ENOUGH RESEARCH TIME YET — ${elapsedSec}s of ${Math.round(DEEPTHINK_MIN_MS / 1000)}s minimum. Do NOT write the final answer yet. ${canSearch ? "In 2-3 bullets, identify what is still missing or unverified, then output a [[SEARCH: query]] line for a completely new angle. " : DEEPEN_STEPS[stepIdx]}` }] });
         for (let s = 0; s < 15; s++) { if (stopped) break; await sleep(1000); }
         continue;
       }
 
-      // 3) wanted to search but limits/final phase -> force final answer turn
+      // 3) research phase over -> dedicated final answer turn
       if (m || (!finalRequested && !underMin)) {
         if (turnClean) log += turnClean + "\n";
         finalRequested = true;
