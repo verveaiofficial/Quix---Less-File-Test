@@ -4,6 +4,9 @@ import { useCanvasStore, extractFiles } from "./canvas";
 import { ibCSS, lockSvg } from "./styles";
 import { PendingAttachment, readFileAsAttachment } from "./ui";
 
+declare const __IS_MAIN_BRANCH__: boolean;
+const IS_MAIN = __IS_MAIN_BRANCH__ === true;
+
 const WAVE_BARS = 24;
 
 export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
@@ -143,7 +146,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const showStop = isSending;
   const showMic = listening || (!showStop && !hasText);
 
-  const pickModel = (id: string) => { if (isGuest && id !== "thinking") { setModelMenuOpen(false); useUIStore.getState().openAuth(); return; } setActiveModel(id); setModelMenuOpen(false); taRef.current?.blur(); };
+  const pickModel = (id: string) => { if (isGuest && id !== "thinking") { setModelMenuOpen(false); useUIStore.getState().openAuth(); return; } if (id === "deepthink" && IS_MAIN) { setModelMenuOpen(false); return; } setActiveModel(id); setModelMenuOpen(false); taRef.current?.blur(); };
   const send = () => { const text = inputValue.trim(); if (!text) return; stopMic(); if (attachments.length === 0 && !text) return; onSend?.(text, attachments); setInputValue(""); setAttachments([]); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } };
   const stop = () => { abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
   const mainAction = () => { if (showStop) return stop(); if (finishing) return; if (listening) return finishMic(); if (hasText) return send(); return toggleMic(); };
@@ -193,12 +196,12 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
                   </button>
                   <div className={`pop-menu ${modelMenuOpen ? "show" : ""}`}>
                     {CHAT_MODELS.map((id) => {
-                      const locked = isGuest && id !== "thinking";
+                      const locked = (isGuest && id !== "thinking") || (id === "deepthink" && IS_MAIN);
                       return (
                         <div key={id} className={`model-item ${locked ? "locked" : ""}`} onClick={(e) => { e.stopPropagation(); if (locked) return; pickModel(id); }}>
                           {activeModel === id && !locked ? (<svg viewBox="0 0 24 24" fill="none" className="model-check" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>) : locked ? (<span dangerouslySetInnerHTML={{ __html: lockSvg }} />) : (<div style={{ width: 15, flexShrink: 0 }} />)}
                           <div className="model-item-content">
-                            <span className="model-title">{MODELS[id].name}{locked && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}</span>
+                            <span className="model-title">{MODELS[id].name}{id === "deepthink" && IS_MAIN && <span className="beta-tag"> Coming soon</span>}{locked && !(id === "deepthink" && IS_MAIN) && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}</span>
                             <span className="model-desc">{MODELS[id].desc}</span>
                           </div>
                         </div>
