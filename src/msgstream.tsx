@@ -1,6 +1,6 @@
 import React from "react";
 import { SourceItem } from "./core";
-import { FileCard, InlineCodeBlock, useCanvasStore } from "./canvas";
+import { FileCard, InlineCodeBlock } from "./canvas";
 
 export function domainOf(uri: string): string { try { return new URL(uri).hostname.replace(/^www\./, ""); } catch { return ""; } }
 export function faviconUrl(uri: string): string | null { try { return "https://www.google.com/s2/favicons?domain=" + new URL(uri).hostname + "&sz=32"; } catch { return null; } }
