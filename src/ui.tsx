@@ -7,18 +7,21 @@ import { ORB_COLORS, qtsCSS, umCSS, amCSS, mlCSS, searchIconSvg } from "./styles
 const srCSS = `.src-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);z-index:40;opacity:0;pointer-events:none;transition:opacity .35s ease}.src-overlay.open{opacity:1;pointer-events:all}.src-drawer{position:fixed;top:0;left:0;height:100vh;height:100dvh;width:280px;background:rgba(20,20,24,.98);border-right:1px solid rgba(255,255,255,.12);box-shadow:8px 0 32px rgba(0,0,0,.45);z-index:50;display:flex;flex-direction:column;transform:translate3d(-100%,0,0);transition:transform .35s cubic-bezier(.25,.46,.45,.94);will-change:transform}.src-drawer.open{transform:translate3d(0,0,0)}.src-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 12px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;letter-spacing:.1em;color:#fff;text-transform:uppercase;flex-shrink:0}.src-head button{background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;padding:6px;display:flex}.src-list{flex:1;min-height:0;overflow-y:auto;padding:0 10px 20px;display:flex;flex-direction:column;gap:2px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}.src-list::-webkit-scrollbar{width:0}.src-item{display:flex;flex-direction:column;gap:6px;padding:12px 10px;border-radius:12px;text-decoration:none}.src-item:hover{background:rgba(255,255,255,.06)}.src-title{color:rgba(255,255,255,.92);font-size:13.5px;line-height:1.45;font-weight:500}.src-desc{color:rgba(255,255,255,.55);font-size:12.5px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.src-domain{display:flex;align-items:center;gap:8px;color:rgba(255,255,255,.6);font-size:12px}.src-domain img{width:16px;height:16px;border-radius:50%;flex-shrink:0;background:#1c1c22}.qts-sources{display:flex;align-items:center;gap:10px;margin:6px 0 0 0;cursor:pointer;padding:4px 0;border-radius:8px}.qts-sources:active{opacity:.7}.qts-sources-label{font-size:15px;color:rgba(255,255,255,.6)}.qts-sources .qts-favstack img{width:20px;height:20px;margin-left:-6px}.qts-sources .qts-favstack img:first-child{margin-left:0}body.src-open #open-btn{opacity:0;pointer-events:none;transition:opacity .2s ease}`;
 
 function escapeHtml(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
-function inlineMd(s: string) { return s.replace(/\[\[CITE\|([^|]+)\|([^\]]+)\]\]/g, '<a style="color:#8a8f96;text-decoration:underline" href="$2" target="_blank" rel="noreferrer">$1</a>').replace(/`([^`]+)`/g, '<code class="md-code">$1</code>').replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/\*([^*]+)\*/g, "<em>$1</em>").replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>'); }
+function inlineMd(s: string) { return s.replace(/\[\[CITE\|([^|]+)\|([^\]]+)\]\]/g, '<a style="display:inline-block;padding:2px 8px;border-radius:8px;background:rgba(255,255,255,.09);color:#9ba1a6;font-size:12px;text-decoration:none;margin:0 3px;vertical-align:middle;line-height:1.4;white-space:nowrap" href="$2" target="_blank" rel="noreferrer">$1</a>').replace(/`([^`]+)`/g, '<code class="md-code">$1</code>').replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/\*([^*]+)\*/g, "<em>$1</em>").replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>'); }
 function citeReplace(text: string, sources: SourceItem[]): string {
   if (!sources || !sources.length) return text;
   return text.replace(/\[(\d+(?:\s*,\s*\d+)*)\](?!\()/g, (_m, grp: string) => {
     const nums = grp.split(",").map((x) => parseInt(x.trim(), 10)).filter((n) => !isNaN(n));
-    const parts = nums.map((n) => {
+    const byDomain: { domain: string; url: string; count: number }[] = [];
+    nums.forEach((n) => {
       const s = sources[n - 1];
-      if (!s) return null;
-      const title = s.title && s.title.length > 42 ? s.title.slice(0, 42) + "…" : (s.title || s.uri);
-      return `[[CITE|${String(title).replace(/\|/g, "/")}|${s.uri}]]`;
-    }).filter(Boolean) as string[];
-    return parts.length ? parts.join(", ") : _m;
+      if (!s) return;
+      const dom = domainOf(s.uri) || "source";
+      const existing = byDomain.find((d) => d.domain === dom);
+      if (existing) { existing.count++; } else { byDomain.push({ domain: dom, url: s.uri, count: 1 }); }
+    });
+    if (!byDomain.length) return _m;
+    return " " + byDomain.map((d) => `[[CITE|${d.domain}${d.count > 1 ? ` +${d.count - 1}` : ""}|${d.url}]]`).join(" ") + " ";
   });
 }
 function mdToHtml(src: string): string { const lines = escapeHtml(src).split("\n"); const out: string[] = []; let inUl = false, inOl = false; const close = () => { if (inUl) out.push("</ul>"); if (inOl) out.push("</ol>"); inUl = false; inOl = false; }; for (const line of lines) { const t = line.trim(); if (!t) { close(); out.push('<div class="md-gap"></div>'); continue; } if (/^###\s/.test(t)) { close(); out.push(`<h4>${inlineMd(t.slice(4))}</h4>`); continue; } if (/^##\s/.test(t)) { close(); out.push(`<h3>${inlineMd(t.slice(3))}</h3>`); continue; } if (/^#\s/.test(t)) { close(); out.push(`<h3>${inlineMd(t.slice(2))}</h3>`); continue; } if (/^[-*]\s/.test(t)) { if (!inUl) { close(); out.push("<ul>"); inUl = true; } out.push(`<li>${inlineMd(t.slice(2))}</li>`); continue; } if (/^\d+[.)]\s/.test(t)) { if (!inOl) { close(); out.push("<ol>"); inOl = true; } out.push(`<li>${inlineMd(t.replace(/^\d+[.)]\s/, ""))}</li>`); continue; } close(); out.push(`<div>${inlineMd(t)}</div>`); } close(); return out.join(""); }
