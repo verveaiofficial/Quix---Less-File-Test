@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.7.0";
+export const APP_VERSION = "v2.7.1";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -264,7 +264,6 @@ export async function tavilySearch(query: string): Promise<TavilyResult[]> {
 const SEARCH_RE = /\[\[SEARCH:?\s*([^\]\n]+?)\s*\]\]/i;
 function fmtTime(sec: number): string { const m = Math.floor(sec / 60); const s = sec % 60; return `${m}:${s < 10 ? "0" : ""}${s}`; }
 
-// survives 429 AND 503 "high demand" walls with a live countdown; respects stop flag
 async function geminiTurnStream(apiKey: string, contents: any[], onText: (t: string) => void, onCooldown?: (sec: number) => Promise<void>, shouldStop?: () => boolean): Promise<string> {
   for (let attempt = 0; ; attempt++) {
     if (shouldStop && shouldStop()) throw new DOMException("Aborted", "AbortError");
@@ -359,7 +358,9 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
       const turn = await geminiTurnStream(apiKey, contents, (t) => h.onThoughts(log + t), cool, chk);
       if (stopped) { finalText = finalText || "Research stopped."; break; }
       const m = turn.match(SEARCH_RE);
+      const turnClean = turn.replace(SEARCH_RE, "").trim();
 
+      // 1) model wants to search and still allowed -> do it
       if (m && searchCount < DEEPTHINK_MAX_SEARCHES && !overTime) {
         const query = m[1].trim();
         const before = turn.slice(0, m.index).trim();
@@ -381,8 +382,10 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
         continue;
       }
 
+      // 2) model tries to answer before minimum time -> keep the thoughts AND pace the loop
       if (underMin && !overTime && nudges < 60) {
         nudges++;
+        if (turnClean) log += turnClean + "\n";
         const elapsedSec = Math.round(elapsedMs / 1000);
         log += `• ${fmtTime(elapsedSec)} elapsed — deepening research (${searchCount} searches so far)...\n`;
         h.onThoughts(log);
@@ -390,16 +393,21 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
         const canSearch = searchCount < DEEPTHINK_MAX_SEARCHES;
         contents.push({ role: "model", parts: [{ text: turn }] });
         contents.push({ role: "user", parts: [{ text: `NOT ENOUGH RESEARCH YET — only ${elapsedSec}s of the required ${Math.round(DEEPTHINK_MIN_MS / 1000)}s have passed (${searchCount}/${DEEPTHINK_MIN_SEARCHES} minimum searches). Do NOT write the final answer. ${needSearches || canSearch ? "Output a [[SEARCH: query]] line for a NEW angle you haven't covered." : "Go deeper in bullets: verify claims, counter-arguments, edge cases, real-world examples, numbers and risks."}` }] });
+        // breathe so we don't spam the API into cooldowns
+        for (let s = 0; s < 12; s++) { if (stopped) break; await sleep(1000); }
         continue;
       }
 
+      // 3) model wants to search but limits hit -> force final answer
       if (m) {
+        if (turnClean) log += turnClean + "\n";
         contents.push({ role: "model", parts: [{ text: turn }] });
         contents.push({ role: "user", parts: [{ text: (overTime ? "Time limit reached. " : "Search limit reached. ") + "Write your final answer now in clean markdown." }] });
         finalText = (await geminiTurnStream(apiKey, contents, (t) => h.onThoughts(log + t), cool, chk)).replace(SEARCH_RE, "");
         break;
       }
 
+      // 4) enough time passed and model wrote an answer -> done
       finalText = turn.replace(SEARCH_RE, "");
       break;
     }
