@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.8.0";
+export const APP_VERSION = "v2.9.0";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -31,7 +31,6 @@ export const MODELS: Record<string, { name: string; desc: string; key: string }>
 
 const env = () => (import.meta as any).env || {};
 export function apiKeyFor(model: string): string { const e = env(); const k = MODELS[model]?.key; return k ? e[k] || "" : ""; }
-// DeepThink supports up to 3 rotating keys — add VITE_GEMINI_DEEPTHINK_API_KEY_2 / _3 in Vercel
 export function deepthinkKeys(): string[] {
   const e = env();
   return [e.VITE_GEMINI_DEEPTHINK_API_KEY, e.VITE_GEMINI_DEEPTHINK_API_KEY_2, e.VITE_GEMINI_DEEPTHINK_API_KEY_3].filter((k: any) => !!k);
@@ -188,7 +187,7 @@ export async function saveObservation(summary: string) {
   saveObservationLocal(s);
 }
 
-/* ================= HISTORY (persists thoughts + sources) ================= */
+/* ================= HISTORY ================= */
 export async function createChat(title: string): Promise<string | null> { if (!sb) return null; try { const { data, error } = await sb.from("chats").insert({ title }).select().single(); if (error) return null; return data.id; } catch { return null; } }
 export async function insertMessage(chatId: string, msg: ChatMessage) { if (!sb) return; const base = { id: msg.id, chat_id: chatId, role: msg.role, model: msg.model, content: msg.content, status: "done", kind: "text" }; const extra = { thoughts: msg.thoughts || null, sources: msg.sources && msg.sources.length ? msg.sources : null, think_time: msg.thinkTime != null ? msg.thinkTime : null }; try { await sb.from("messages").insert({ ...base, ...extra }); } catch { try { await sb.from("messages").insert(base); } catch {} } try { await sb.from("chats").update({ updated_at: new Date().toISOString() }).eq("id", chatId); } catch {} }
 export async function fetchChats(): Promise<any[]> { if (!sb) return []; try { const { data } = await sb.from("chats").select("*").order("updated_at", { ascending: false }).limit(50); return data || []; } catch { return []; } }
@@ -238,17 +237,17 @@ export async function askGeminiStream(model: string, prompt: string, opts: { sea
   } finally { controller = null; }
 }
 
-/* ================= TAVILY SEARCH (direct + serverless fallback) ================= */
+/* ================= TAVILY SEARCH (10 results per search) ================= */
 export interface TavilyResult { title: string; url: string; content: string }
 
 function mapTavily(d: any): TavilyResult[] {
-  return (d?.results || []).map((r: any) => ({ title: r.title || r.url, url: r.url, content: String(r.content || "").slice(0, 1200) }));
+  return (d?.results || []).map((r: any) => ({ title: r.title || r.url, url: r.url, content: String(r.content || "").slice(0, 1500) }));
 }
 
 export async function tavilySearch(query: string): Promise<TavilyResult[]> {
   const key = env().VITE_TAVILY_API_KEY || "";
   if (!key) throw new Error("NO TAVILY API KEY (add VITE_TAVILY_API_KEY in Vercel).");
-  const bodyBase = { query, search_depth: "advanced", max_results: 5 };
+  const bodyBase = { query, search_depth: "advanced", max_results: 10 };
   const signal = controller ? controller.signal : undefined;
   try {
     let res = await fetch("https://api.tavily.com/search", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` }, body: JSON.stringify(bodyBase), signal });
@@ -259,7 +258,7 @@ export async function tavilySearch(query: string): Promise<TavilyResult[]> {
     return mapTavily(await res.json());
   } catch (e: any) {
     if (e?.name === "AbortError") throw e;
-    const res = await fetch("/api/tavily", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }), signal });
+    const res = await fetch("/api/tavily", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query, max_results: 10 }), signal });
     if (!res.ok) throw new Error("Search failed (" + res.status + ")");
     return mapTavily(await res.json());
   }
@@ -269,7 +268,11 @@ export async function tavilySearch(query: string): Promise<TavilyResult[]> {
 const SEARCH_RE = /\[\[SEARCH:?\s*([^\]\n]+?)\s*\]\]/i;
 function fmtTime(sec: number): string { const m = Math.floor(sec / 60); const s = sec % 60; return `${m}:${s < 10 ? "0" : ""}${s}`; }
 
-// meaningful work passes for the post-search phase (no more useless spinning)
+// strips SEARCH tokens + empty bullet junk so the log never shows "• •" or raw tokens
+function cleanForLog(t: string): string {
+  return t.replace(/\[\[SEARCH:?[^\]\n]*\]\]/gi, "").split("\n").map((l) => l.trim()).filter((l) => l.length > 2 && l !== "•" && l !== "-" && l !== "*").join("\n");
+}
+
 const DEEPEN_STEPS = [
   "SYNTHESIS PASS: From everything found so far, draft a structured outline of the final answer (headings, key points, and which source numbers support them).",
   "CRITIQUE PASS: Attack your own outline. List weaknesses, missing angles, counter-arguments and unanswered sub-questions.",
@@ -277,7 +280,6 @@ const DEEPEN_STEPS = [
   "QUALITY PASS: Final polish plan — cut fluff, rank the strongest insights first, flag anything unverified.",
 ];
 
-// rotates through keys; only cools down when ALL keys are rate-limited
 async function geminiTurnStream(keys: string[], contents: any[], onText: (t: string) => void, onCooldown?: (sec: number) => Promise<void>, shouldStop?: () => boolean): Promise<string> {
   let rlStreak = 0;
   for (let attempt = 0; ; attempt++) {
@@ -289,7 +291,7 @@ async function geminiTurnStream(keys: string[], contents: any[], onText: (t: str
     if (res.status === 429 || res.status === 503) {
       rlStreak++;
       if (attempt > 14) throw new Error("Model is busy right now.");
-      if (rlStreak < keys.length) { continue; } // another key is waiting — switch instantly, no cooldown
+      if (rlStreak < keys.length) { continue; }
       const waitSec = Math.min(15 + rlStreak * 5, 45);
       if (onCooldown) { await onCooldown(waitSec); } else { await sleep(waitSec * 1000); }
       rlStreak = 0;
@@ -320,9 +322,8 @@ function buildDeepThinkSystem(question: string, history: ChatMessage[]): string 
   const blocks: string[] = [];
   blocks.push("# DeepThink — Autonomous Research Agent\nYou are DeepThink, Quix's deep research mode. You autonomously research the live web for several minutes, then deliver one comprehensive, expert-level answer.");
   blocks.push("## SEARCH TOOL\nWhen you need live information, output a line EXACTLY like this and STOP right after it:\n[[SEARCH: your precise query]]\nThe system runs the search and returns numbered results. Never invent results.");
-  blocks.push("## MANDATORY DEPTH\n- This is a LONG, exhaustive research session (target ~5 minutes). You are FORBIDDEN from writing a final answer until the system tells you enough time has passed.\n- You MUST run at least " + DEEPTHINK_MIN_SEARCHES + " searches, and you MAY run up to " + DEEPTHINK_MAX_SEARCHES + ".\n- FIRST output a short research plan as bullets (• ) listing 4-8 sub-questions covering every angle.\n- Then search each sub-question, refining and following up on interesting leads.\n- Cross-check important claims across multiple sources.\n- After searches are done, you will be asked to run synthesis/critique/enhance/quality passes — treat them seriously, they make the final answer great.");
-  blocks.push("## BETWEEN SEARCHES\nThink out loud as short bullet lines starting with '• '. Identify gaps and pick the next query.");
-  blocks.push("## FINAL ANSWER\nOnly when the system allows it, write the final answer in clean markdown WITHOUT any [[SEARCH:]] line. Cite sources inline like [1] using the numbered results you received. Make it thorough, practical and well-structured.");
+  blocks.push("## THINK-SEARCH-THINK RHYTHM (CRITICAL)\n- NEVER chain searches back-to-back. After EVERY search you MUST write 3-6 analysis bullets about what you actually learned (key facts, numbers, contradictions, gaps) BEFORE choosing the next query.\n- NEVER pre-plan all queries. Each next query must be chosen from what you JUST learned.\n- NEVER repeat or lightly paraphrase an earlier query. If an angle dies, switch angle completely.\n- You MUST run at least " + DEEPTHINK_MIN_SEARCHES + " searches and MAY run up to " + DEEPTHINK_MAX_SEARCHES + ".\n- FIRST output a short plan as bullets (• ) listing 4-8 sub-questions.\n- Cross-check important claims across multiple sources.");
+  blocks.push("## FINAL ANSWER\nOnly when the system tells you the research phase is over, write the final answer in clean markdown WITHOUT any [[SEARCH:]] line. Cite sources inline like [1]. Make it thorough, practical, well-structured. Do NOT talk about passes or system timers in the answer.");
   blocks.push("# Global Knowledge\n" + globalKnowledge);
   blocks.push("# Global Instructions\n" + globalInstructions);
   blocks.push("# DeepThink Instructions\n" + deepthinkMd);
@@ -333,7 +334,7 @@ function buildDeepThinkSystem(question: string, history: ChatMessage[]): string 
   const hist = history.slice(-6).map((m) => `${m.role === "user" ? "User" : "Quix"}: ${stripObs(m.content)}`).join("\n");
   if (hist) blocks.push(`--- Conversation so far ---\n${hist}`);
   blocks.push(`--- USER'S RESEARCH QUESTION ---\n${question}`);
-  blocks.push("Begin. Write your plan, then search, then keep going until told to answer.");
+  blocks.push("Begin. Plan, then think-search-think until told to answer.");
   return blocks.join("\n\n");
 }
 
@@ -348,6 +349,7 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
   let log = "";
   let finalText = "";
   let stopped = false;
+  let finalRequested = false;
   const onStop = () => { stopped = true; try { if (controller) controller.abort(); } catch {} };
   window.addEventListener("quix-stop", onStop);
   const cool = (sec: number) => new Promise<void>((resolve) => {
@@ -379,12 +381,12 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
       const turn = await geminiTurnStream(keys, contents, (t) => h.onThoughts(log + t), cool, chk);
       if (stopped) { finalText = finalText || "Research stopped."; break; }
       const m = turn.match(SEARCH_RE);
-      const turnClean = turn.replace(SEARCH_RE, "").trim();
+      const turnClean = cleanForLog(turn);
 
-      // 1) model wants to search and still allowed -> do it
-      if (m && searchCount < DEEPTHINK_MAX_SEARCHES && !overTime) {
+      // 1) search allowed -> do it
+      if (m && searchCount < DEEPTHINK_MAX_SEARCHES && !overTime && !finalRequested) {
         const query = m[1].trim();
-        const before = turn.slice(0, m.index).trim();
+        const before = cleanForLog(turn.slice(0, m.index));
         searchCount++;
         log += (before ? before + "\n" : "") + `• Searching web (${searchCount}/${DEEPTHINK_MAX_SEARCHES}): "${query}"\n`;
         h.onThoughts(log);
@@ -395,7 +397,7 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
           results.forEach((r) => { if (!seen.has(r.url)) { seen.add(r.url); sources.push({ title: r.title, uri: r.url }); } });
           h.onSources([...sources]);
           const block = results.map((r, i) => `[${i + 1}] ${r.title}\n${r.url}\n${r.content}`).join("\n\n");
-          contents.push({ role: "user", parts: [{ text: `SEARCH RESULTS for "${query}":\n${block || "(no results)"}\n\nAnalyze these results in bullets, then continue with another [[SEARCH: query]] for an unexplored angle. Do NOT write the final answer yet.` }] });
+          contents.push({ role: "user", parts: [{ text: `SEARCH RESULTS for "${query}":\n${block || "(no results)"}\n\nNow ANALYZE what you just learned in 3-6 bullets (key facts, numbers, contradictions, gaps). Then choose the single most valuable NEXT query from these findings and output exactly one [[SEARCH: query]] line. Do NOT repeat an earlier query.` }] });
         } catch (e: any) {
           if (e?.name === "AbortError" || stopped) { finalText = finalText || "Research stopped."; break; }
           contents.push({ role: "user", parts: [{ text: `Search failed (${e?.message || "error"}). Continue with what you know or try another query.` }] });
@@ -403,8 +405,8 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
         continue;
       }
 
-      // 2) under minimum time -> run a real work pass (synthesis/critique/enhance/quality)
-      if (underMin && !overTime && nudges < 60) {
+      // 2) under minimum time -> deepen (analysis passes, never raw search chaining)
+      if (underMin && !overTime && nudges < 60 && !finalRequested) {
         const stepIdx = nudges % DEEPEN_STEPS.length;
         nudges++;
         if (turnClean) log += turnClean + "\n";
@@ -413,21 +415,25 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
         h.onThoughts(log);
         const needSearches = searchCount < DEEPTHINK_MIN_SEARCHES;
         contents.push({ role: "model", parts: [{ text: turn }] });
-        contents.push({ role: "user", parts: [{ text: `NOT ENOUGH RESEARCH TIME YET — ${elapsedSec}s of ${Math.round(DEEPTHINK_MIN_MS / 1000)}s minimum. Do NOT write the final answer yet. ${needSearches ? "Run more searches first ([[SEARCH: query]]). " : ""}${DEEPEN_STEPS[stepIdx]}` }] });
+        contents.push({ role: "user", parts: [{ text: `NOT ENOUGH RESEARCH TIME YET — ${elapsedSec}s of ${Math.round(DEEPTHINK_MIN_MS / 1000)}s minimum. Do NOT write the final answer yet. ${needSearches ? "Run more searches first ([[SEARCH: query]]), but analyze results before each new search. " : ""}${DEEPEN_STEPS[stepIdx]}` }] });
         for (let s = 0; s < 15; s++) { if (stopped) break; await sleep(1000); }
         continue;
       }
 
-      // 3) model wants to search but limits hit -> force final answer
-      if (m) {
+      // 3) wanted to search but limits/final phase -> force final answer turn
+      if (m || (!finalRequested && !underMin)) {
         if (turnClean) log += turnClean + "\n";
+        finalRequested = true;
+        log += "• Research complete — writing final answer...\n";
+        h.onThoughts(log);
         contents.push({ role: "model", parts: [{ text: turn }] });
-        contents.push({ role: "user", parts: [{ text: (overTime ? "Time limit reached. " : "Search limit reached. ") + "Write your final answer now in clean markdown." }] });
-        finalText = (await geminiTurnStream(keys, contents, (t) => h.onThoughts(log + t), cool, chk)).replace(SEARCH_RE, "");
+        contents.push({ role: "user", parts: [{ text: "The research phase is OVER. Write the final comprehensive answer NOW in clean markdown. Deliver the actual answer to the user's question with inline citations like [1]. Do NOT mention passes, timers or the system." }] });
+        const fin = await geminiTurnStream(keys, contents, (t) => h.onThoughts(log + t), cool, chk);
+        finalText = fin.replace(SEARCH_RE, "");
         break;
       }
 
-      // 4) enough time passed and model wrote an answer -> done
+      // 4) fallback final
       finalText = turn.replace(SEARCH_RE, "");
       break;
     }
