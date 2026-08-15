@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.6.1";
+export const APP_VERSION = "v2.7.0";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -41,7 +41,7 @@ export interface AttachmentMeta { name: string; kind: "image" | "pdf" | "text"; 
 export interface ChatMessage {
   id: string; role: "user" | "ai"; model: string; content: string; thoughts?: string;
   doneStreaming?: boolean; createdAt: number; status?: "thinking" | "streaming" | "done" | "error";
-  sources?: SourceItem[]; attachments?: AttachmentMeta[]; feedback?: "up" | "down";
+  sources?: SourceItem[]; attachments?: AttachmentMeta[]; feedback?: "up" | "down"; thinkTime?: number;
 }
 
 /* ================= SUPABASE ================= */
@@ -183,11 +183,11 @@ export async function saveObservation(summary: string) {
   saveObservationLocal(s);
 }
 
-/* ================= HISTORY ================= */
+/* ================= HISTORY (persists thoughts + sources) ================= */
 export async function createChat(title: string): Promise<string | null> { if (!sb) return null; try { const { data, error } = await sb.from("chats").insert({ title }).select().single(); if (error) return null; return data.id; } catch { return null; } }
-export async function insertMessage(chatId: string, msg: ChatMessage) { if (!sb) return; try { await sb.from("messages").insert({ id: msg.id, chat_id: chatId, role: msg.role, model: msg.model, content: msg.content, status: "done", kind: "text" }); await sb.from("chats").update({ updated_at: new Date().toISOString() }).eq("id", chatId); } catch {} }
+export async function insertMessage(chatId: string, msg: ChatMessage) { if (!sb) return; const base = { id: msg.id, chat_id: chatId, role: msg.role, model: msg.model, content: msg.content, status: "done", kind: "text" }; const extra = { thoughts: msg.thoughts || null, sources: msg.sources && msg.sources.length ? msg.sources : null, think_time: msg.thinkTime != null ? msg.thinkTime : null }; try { await sb.from("messages").insert({ ...base, ...extra }); } catch { try { await sb.from("messages").insert(base); } catch {} } try { await sb.from("chats").update({ updated_at: new Date().toISOString() }).eq("id", chatId); } catch {} }
 export async function fetchChats(): Promise<any[]> { if (!sb) return []; try { const { data } = await sb.from("chats").select("*").order("updated_at", { ascending: false }).limit(50); return data || []; } catch { return []; } }
-export async function fetchMessages(chatId: string): Promise<ChatMessage[]> { if (!sb) return []; try { const { data } = await sb.from("messages").select("*").eq("chat_id", chatId).order("created_at", { ascending: true }); return (data || []).map((m: any) => ({ id: m.id, role: m.role, model: m.model, content: m.content, createdAt: new Date(m.created_at).getTime(), status: "done" })); } catch { return []; } }
+export async function fetchMessages(chatId: string): Promise<ChatMessage[]> { if (!sb) return []; try { const { data } = await sb.from("messages").select("*").eq("chat_id", chatId).order("created_at", { ascending: true }); return (data || []).map((m: any) => ({ id: m.id, role: m.role, model: m.model, content: m.content, thoughts: m.thoughts || undefined, sources: Array.isArray(m.sources) ? m.sources : undefined, thinkTime: m.think_time != null ? m.think_time : undefined, createdAt: new Date(m.created_at).getTime(), status: "done" })); } catch { return []; } }
 export async function renameChat(id: string, title: string) { if (!sb) return; try { await sb.from("chats").update({ title }).eq("id", id); } catch {} }
 export async function deleteChat(id: string) { if (!sb) return; try { await sb.from("chats").delete().eq("id", id); } catch {} }
 
@@ -209,7 +209,7 @@ export async function askGeminiStream(model: string, prompt: string, opts: { sea
   try {
     let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
     if (!res.ok && opts.search) { res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }] }), signal }); }
-    if (!res.ok || !res.body) { const d = await res.json().catch(() => null); throw new Error(d?.error?.message || "Gemini request failed"); }
+    if (!res.ok || !res.body) { const d = await res.json().catch(() => null); throw new Error(d?.error?.message || "Model request failed"); }
     const reader = res.body.getReader(); const dec = new TextDecoder();
     let buf = "", text = "", thoughts = ""; const sources: SourceItem[] = []; const seen = new Set<string>();
     while (true) {
@@ -255,7 +255,7 @@ export async function tavilySearch(query: string): Promise<TavilyResult[]> {
   } catch (e: any) {
     if (e?.name === "AbortError") throw e;
     const res = await fetch("/api/tavily", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }), signal });
-    if (!res.ok) throw new Error("Tavily search failed (" + res.status + ")");
+    if (!res.ok) throw new Error("Search failed (" + res.status + ")");
     return mapTavily(await res.json());
   }
 }
@@ -264,20 +264,19 @@ export async function tavilySearch(query: string): Promise<TavilyResult[]> {
 const SEARCH_RE = /\[\[SEARCH:?\s*([^\]\n]+?)\s*\]\]/i;
 function fmtTime(sec: number): string { const m = Math.floor(sec / 60); const s = sec % 60; return `${m}:${s < 10 ? "0" : ""}${s}`; }
 
-// survives Gemini 429 cooldowns; respects the stop flag between retries
-async function geminiTurnStream(apiKey: string, contents: any[], onText: (t: string) => void, onCooldown?: (sec: number) => void, shouldStop?: () => boolean): Promise<string> {
+// survives 429 AND 503 "high demand" walls with a live countdown; respects stop flag
+async function geminiTurnStream(apiKey: string, contents: any[], onText: (t: string) => void, onCooldown?: (sec: number) => Promise<void>, shouldStop?: () => boolean): Promise<string> {
   for (let attempt = 0; ; attempt++) {
     if (shouldStop && shouldStop()) throw new DOMException("Aborted", "AbortError");
     controller = new AbortController();
     const signal = controller.signal;
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents }), signal });
-    if (res.status === 429 && attempt < 6) {
+    if ((res.status === 429 || res.status === 503) && attempt < 10) {
       const waitSec = Math.min(20 + attempt * 10, 60);
-      if (onCooldown) onCooldown(waitSec);
-      await sleep(waitSec * 1000);
+      if (onCooldown) { await onCooldown(waitSec); } else { await sleep(waitSec * 1000); }
       continue;
     }
-    if (!res.ok || !res.body) { const d = await res.json().catch(() => null); throw new Error(d?.error?.message || "Gemini request failed"); }
+    if (!res.ok || !res.body) { const d = await res.json().catch(() => null); throw new Error(d?.error?.message || "Model request failed"); }
     const reader = res.body.getReader(); const dec = new TextDecoder();
     let buf = "", text = "";
     while (true) {
@@ -331,7 +330,24 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
   let stopped = false;
   const onStop = () => { stopped = true; try { if (controller) controller.abort(); } catch {} };
   window.addEventListener("quix-stop", onStop);
-  const cool = (sec: number) => { log += `• Gemini rate limit — cooling down ${sec}s, staying active...\n`; h.onThoughts(log); };
+  const cool = (sec: number) => new Promise<void>((resolve) => {
+    let remaining = sec;
+    log += `• Cooling down... ${remaining}s\n`;
+    h.onThoughts(log);
+    const iv = setInterval(() => {
+      if (stopped) { clearInterval(iv); resolve(); return; }
+      remaining--;
+      if (remaining <= 0) {
+        clearInterval(iv);
+        log = log.replace(/• Cooling down\.{3} \d+s\n$/, "• Cooldown over — resuming research...\n");
+        h.onThoughts(log);
+        resolve();
+      } else {
+        log = log.replace(/• Cooling down\.{3} \d+s\n$/, `• Cooling down... ${remaining}s\n`);
+        h.onThoughts(log);
+      }
+    }, 1000);
+  });
   const chk = () => stopped;
   const contents: any[] = [{ role: "user", parts: [{ text: buildDeepThinkSystem(question, history) }] }];
   try {
@@ -344,7 +360,6 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
       if (stopped) { finalText = finalText || "Research stopped."; break; }
       const m = turn.match(SEARCH_RE);
 
-      // 1) model wants to search and still allowed -> do it
       if (m && searchCount < DEEPTHINK_MAX_SEARCHES && !overTime) {
         const query = m[1].trim();
         const before = turn.slice(0, m.index).trim();
@@ -366,7 +381,6 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
         continue;
       }
 
-      // 2) model tries to answer before minimum time -> force more research
       if (underMin && !overTime && nudges < 60) {
         nudges++;
         const elapsedSec = Math.round(elapsedMs / 1000);
@@ -379,7 +393,6 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
         continue;
       }
 
-      // 3) model wants to search but limits hit -> force final answer
       if (m) {
         contents.push({ role: "model", parts: [{ text: turn }] });
         contents.push({ role: "user", parts: [{ text: (overTime ? "Time limit reached. " : "Search limit reached. ") + "Write your final answer now in clean markdown." }] });
@@ -387,12 +400,11 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
         break;
       }
 
-      // 4) enough time passed and model wrote an answer -> done
       finalText = turn.replace(SEARCH_RE, "");
       break;
     }
   } catch (e: any) {
-    if (!finalText) finalText = (stopped || e?.name === "AbortError") ? "Research stopped." : `DeepThink error: ${e?.message || e}`;
+    if (!finalText) finalText = (stopped || e?.name === "AbortError") ? "Research stopped." : "DeepThink hit a temporary roadblock and couldn't finish. Give it another try in a minute.";
   } finally {
     controller = null;
     window.removeEventListener("quix-stop", onStop);
