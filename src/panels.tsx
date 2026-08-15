@@ -244,7 +244,7 @@ export function SettingsPage() {
               <button className="font-btn" onClick={() => setFontScale(fontScale + 0.05)}>+</button>
             </div>
           </div>
-          {uid && (<div className="set-section"><button className="signout-big" onClick={async () => { await signOut(); resetChat(); }}>Sign out</button></div>)}
+          {session && (<div className="set-section"><button className="signout-big" onClick={async () => { await signOut(); resetChat(); }}>Sign out</button></div>)}
           <div className="watermark">Quix · {APP_VERSION}</div>
         </div>
       </div>
