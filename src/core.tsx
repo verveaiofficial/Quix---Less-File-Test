@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.7.1";
+export const APP_VERSION = "v2.8.0";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -31,6 +31,11 @@ export const MODELS: Record<string, { name: string; desc: string; key: string }>
 
 const env = () => (import.meta as any).env || {};
 export function apiKeyFor(model: string): string { const e = env(); const k = MODELS[model]?.key; return k ? e[k] || "" : ""; }
+// DeepThink supports up to 3 rotating keys — add VITE_GEMINI_DEEPTHINK_API_KEY_2 / _3 in Vercel
+export function deepthinkKeys(): string[] {
+  const e = env();
+  return [e.VITE_GEMINI_DEEPTHINK_API_KEY, e.VITE_GEMINI_DEEPTHINK_API_KEY_2, e.VITE_GEMINI_DEEPTHINK_API_KEY_3].filter((k: any) => !!k);
+}
 export const rid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export const dayKey = () => new Date().toISOString().slice(0, 10);
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -264,17 +269,33 @@ export async function tavilySearch(query: string): Promise<TavilyResult[]> {
 const SEARCH_RE = /\[\[SEARCH:?\s*([^\]\n]+?)\s*\]\]/i;
 function fmtTime(sec: number): string { const m = Math.floor(sec / 60); const s = sec % 60; return `${m}:${s < 10 ? "0" : ""}${s}`; }
 
-async function geminiTurnStream(apiKey: string, contents: any[], onText: (t: string) => void, onCooldown?: (sec: number) => Promise<void>, shouldStop?: () => boolean): Promise<string> {
+// meaningful work passes for the post-search phase (no more useless spinning)
+const DEEPEN_STEPS = [
+  "SYNTHESIS PASS: From everything found so far, draft a structured outline of the final answer (headings, key points, and which source numbers support them).",
+  "CRITIQUE PASS: Attack your own outline. List weaknesses, missing angles, counter-arguments and unanswered sub-questions.",
+  "ENHANCE PASS: Strengthen the draft — add concrete numbers, real examples, tricks, and actionable steps that resolve the critique.",
+  "QUALITY PASS: Final polish plan — cut fluff, rank the strongest insights first, flag anything unverified.",
+];
+
+// rotates through keys; only cools down when ALL keys are rate-limited
+async function geminiTurnStream(keys: string[], contents: any[], onText: (t: string) => void, onCooldown?: (sec: number) => Promise<void>, shouldStop?: () => boolean): Promise<string> {
+  let rlStreak = 0;
   for (let attempt = 0; ; attempt++) {
     if (shouldStop && shouldStop()) throw new DOMException("Aborted", "AbortError");
+    const apiKey = keys[attempt % keys.length];
     controller = new AbortController();
     const signal = controller.signal;
     const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents }), signal });
-    if ((res.status === 429 || res.status === 503) && attempt < 10) {
-      const waitSec = Math.min(20 + attempt * 10, 60);
+    if (res.status === 429 || res.status === 503) {
+      rlStreak++;
+      if (attempt > 14) throw new Error("Model is busy right now.");
+      if (rlStreak < keys.length) { continue; } // another key is waiting — switch instantly, no cooldown
+      const waitSec = Math.min(15 + rlStreak * 5, 45);
       if (onCooldown) { await onCooldown(waitSec); } else { await sleep(waitSec * 1000); }
+      rlStreak = 0;
       continue;
     }
+    rlStreak = 0;
     if (!res.ok || !res.body) { const d = await res.json().catch(() => null); throw new Error(d?.error?.message || "Model request failed"); }
     const reader = res.body.getReader(); const dec = new TextDecoder();
     let buf = "", text = "";
@@ -299,9 +320,9 @@ function buildDeepThinkSystem(question: string, history: ChatMessage[]): string 
   const blocks: string[] = [];
   blocks.push("# DeepThink — Autonomous Research Agent\nYou are DeepThink, Quix's deep research mode. You autonomously research the live web for several minutes, then deliver one comprehensive, expert-level answer.");
   blocks.push("## SEARCH TOOL\nWhen you need live information, output a line EXACTLY like this and STOP right after it:\n[[SEARCH: your precise query]]\nThe system runs the search and returns numbered results. Never invent results.");
-  blocks.push("## MANDATORY DEPTH\n- This is a LONG, exhaustive research session (target ~5 minutes). You are FORBIDDEN from writing a final answer until the system tells you enough time has passed.\n- You MUST run at least " + DEEPTHINK_MIN_SEARCHES + " searches, and you MAY run up to " + DEEPTHINK_MAX_SEARCHES + ".\n- FIRST output a short research plan as bullets (• ) listing 4-8 sub-questions covering every angle.\n- Then search each sub-question, refining and following up on interesting leads.\n- Cross-check important claims across multiple sources.\n- If told to keep researching, explore NEW angles: counter-arguments, edge cases, real examples, numbers, risks, alternatives. Never repeat old searches.");
+  blocks.push("## MANDATORY DEPTH\n- This is a LONG, exhaustive research session (target ~5 minutes). You are FORBIDDEN from writing a final answer until the system tells you enough time has passed.\n- You MUST run at least " + DEEPTHINK_MIN_SEARCHES + " searches, and you MAY run up to " + DEEPTHINK_MAX_SEARCHES + ".\n- FIRST output a short research plan as bullets (• ) listing 4-8 sub-questions covering every angle.\n- Then search each sub-question, refining and following up on interesting leads.\n- Cross-check important claims across multiple sources.\n- After searches are done, you will be asked to run synthesis/critique/enhance/quality passes — treat them seriously, they make the final answer great.");
   blocks.push("## BETWEEN SEARCHES\nThink out loud as short bullet lines starting with '• '. Identify gaps and pick the next query.");
-  blocks.push("## FINAL ANSWER\nOnly when the system allows it, write the final answer in clean markdown WITHOUT any [[SEARCH:]] line. Cite sources inline like [1] using the numbered results you received. Make it thorough and well-structured.");
+  blocks.push("## FINAL ANSWER\nOnly when the system allows it, write the final answer in clean markdown WITHOUT any [[SEARCH:]] line. Cite sources inline like [1] using the numbered results you received. Make it thorough, practical and well-structured.");
   blocks.push("# Global Knowledge\n" + globalKnowledge);
   blocks.push("# Global Instructions\n" + globalInstructions);
   blocks.push("# DeepThink Instructions\n" + deepthinkMd);
@@ -317,8 +338,8 @@ function buildDeepThinkSystem(question: string, history: ChatMessage[]): string 
 }
 
 export async function runDeepThink(question: string, history: ChatMessage[], h: { onThoughts: (t: string) => void; onSources: (s: SourceItem[]) => void; onDone: (r: GeminiResult) => void }): Promise<void> {
-  const apiKey = apiKeyFor("deepthink");
-  if (!apiKey) throw new Error("NO API KEY FOR DEEPTHINK.");
+  const keys = deepthinkKeys();
+  if (!keys.length) throw new Error("NO API KEY FOR DEEPTHINK.");
   const started = Date.now();
   const sources: SourceItem[] = [];
   const seen = new Set<string>();
@@ -355,7 +376,7 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
       const elapsedMs = Date.now() - started;
       const overTime = elapsedMs > DEEPTHINK_MAX_MS;
       const underMin = elapsedMs < DEEPTHINK_MIN_MS;
-      const turn = await geminiTurnStream(apiKey, contents, (t) => h.onThoughts(log + t), cool, chk);
+      const turn = await geminiTurnStream(keys, contents, (t) => h.onThoughts(log + t), cool, chk);
       if (stopped) { finalText = finalText || "Research stopped."; break; }
       const m = turn.match(SEARCH_RE);
       const turnClean = turn.replace(SEARCH_RE, "").trim();
@@ -382,19 +403,18 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
         continue;
       }
 
-      // 2) model tries to answer before minimum time -> keep the thoughts AND pace the loop
+      // 2) under minimum time -> run a real work pass (synthesis/critique/enhance/quality)
       if (underMin && !overTime && nudges < 60) {
+        const stepIdx = nudges % DEEPEN_STEPS.length;
         nudges++;
         if (turnClean) log += turnClean + "\n";
         const elapsedSec = Math.round(elapsedMs / 1000);
-        log += `• ${fmtTime(elapsedSec)} elapsed — deepening research (${searchCount} searches so far)...\n`;
+        log += `• ${fmtTime(elapsedSec)} — deepening pass ${nudges} (${searchCount} searches done)...\n`;
         h.onThoughts(log);
         const needSearches = searchCount < DEEPTHINK_MIN_SEARCHES;
-        const canSearch = searchCount < DEEPTHINK_MAX_SEARCHES;
         contents.push({ role: "model", parts: [{ text: turn }] });
-        contents.push({ role: "user", parts: [{ text: `NOT ENOUGH RESEARCH YET — only ${elapsedSec}s of the required ${Math.round(DEEPTHINK_MIN_MS / 1000)}s have passed (${searchCount}/${DEEPTHINK_MIN_SEARCHES} minimum searches). Do NOT write the final answer. ${needSearches || canSearch ? "Output a [[SEARCH: query]] line for a NEW angle you haven't covered." : "Go deeper in bullets: verify claims, counter-arguments, edge cases, real-world examples, numbers and risks."}` }] });
-        // breathe so we don't spam the API into cooldowns
-        for (let s = 0; s < 12; s++) { if (stopped) break; await sleep(1000); }
+        contents.push({ role: "user", parts: [{ text: `NOT ENOUGH RESEARCH TIME YET — ${elapsedSec}s of ${Math.round(DEEPTHINK_MIN_MS / 1000)}s minimum. Do NOT write the final answer yet. ${needSearches ? "Run more searches first ([[SEARCH: query]]). " : ""}${DEEPEN_STEPS[stepIdx]}` }] });
+        for (let s = 0; s < 15; s++) { if (stopped) break; await sleep(1000); }
         continue;
       }
 
@@ -403,7 +423,7 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
         if (turnClean) log += turnClean + "\n";
         contents.push({ role: "model", parts: [{ text: turn }] });
         contents.push({ role: "user", parts: [{ text: (overTime ? "Time limit reached. " : "Search limit reached. ") + "Write your final answer now in clean markdown." }] });
-        finalText = (await geminiTurnStream(apiKey, contents, (t) => h.onThoughts(log + t), cool, chk)).replace(SEARCH_RE, "");
+        finalText = (await geminiTurnStream(keys, contents, (t) => h.onThoughts(log + t), cool, chk)).replace(SEARCH_RE, "");
         break;
       }
 
