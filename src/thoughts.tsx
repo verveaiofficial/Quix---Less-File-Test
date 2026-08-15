@@ -29,13 +29,14 @@ function SourcesPanel({ sources, onClose }: { sources: SourceItem[]; onClose: ()
   </>), document.body);
 }
 
-// thoughts arrive pre-streamed from AiMessage; typingDone tells us when the visible typing finished
-export function ThinkingStatus({ done, sources, thoughts, thinkTime, typingDone }: { done: boolean; sources?: SourceItem[]; thoughts?: string; thinkTime?: number; typingDone?: boolean }) {
+// thoughts render LIVE as they stream from the model (no fake typewriter).
+// `done` = model left the thinking phase; `finished` = whole message complete (collapse then).
+export function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }: { done: boolean; finished?: boolean; sources?: SourceItem[]; thoughts?: string; thinkTime?: number }) {
   const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(true);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   useEffect(() => { if (done) return; const t = setInterval(() => setElapsed((p) => p + 1), 1000); return () => clearInterval(t); }, [done]);
-  useEffect(() => { if (typingDone) setExpanded(false); }, [typingDone]);
+  useEffect(() => { if (finished) setExpanded(false); }, [finished]);
   const finalTime = thinkTime != null ? thinkTime : elapsed;
   const thoughtParas = (thoughts || "").split(/\n+/).map((t) => t.trim()).filter(Boolean);
   const found = sources?.length ?? 0;
