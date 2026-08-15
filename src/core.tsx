@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.9.8";
+export const APP_VERSION = "v2.9.9";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -241,7 +241,7 @@ export async function askGeminiStream(model: string, prompt: string, opts: { sea
     let buf = "", text = "", thoughts = "";
     const sources: SourceItem[] = []; const seen = new Set<string>();
     let inThinking = false;
-    
+
     while (true) {
       const { done, value } = await reader.read(); if (done) break;
       buf += dec.decode(value, { stream: true });
@@ -252,46 +252,50 @@ export async function askGeminiStream(model: string, prompt: string, opts: { sea
         try {
           const json = JSON.parse(payload);
           (json?.candidates?.[0]?.groundingMetadata?.groundingChunks || []).forEach((c: any) => { const uri = c?.web?.uri; if (uri && !seen.has(uri)) { seen.add(uri); sources.push({ title: c?.web?.title || uri, uri }); } });
-          
+
           let textChunk = "";
           let thoughtChunk = "";
-          (json?.candidates?.[0]?.content?.parts || []).forEach((p: any) => { 
-            if (p?.thought) { thoughtChunk += p?.text || ""; } 
-            else { textChunk += p?.text || ""; } 
+          (json?.candidates?.[0]?.content?.parts || []).forEach((p: any) => {
+            if (p?.thought) { thoughtChunk += p?.text || ""; }
+            else { textChunk += p?.text || ""; }
           });
 
           if (thoughtChunk) {
             thoughts += thoughtChunk;
             h.onThoughts(thoughts);
           }
-          
+
           if (textChunk) {
             let remaining = textChunk;
             while (remaining.length > 0) {
+              const openIdx = remaining.indexOf("<thinking>");
+              const closeIdx = remaining.indexOf("</thinking>");
               if (inThinking) {
-                const endIdx = remaining.indexOf("</thinking>");
-                if (endIdx !== -1) {
-                  const part = remaining.slice(0, endIdx);
-                  thoughts += part;
-                  h.onThoughts(thoughts);
-                  remaining = remaining.slice(endIdx + 11);
+                if (closeIdx !== -1 && (openIdx === -1 || closeIdx < openIdx)) {
+                  const part = remaining.slice(0, closeIdx);
+                  thoughts += part; h.onThoughts(thoughts);
+                  remaining = remaining.slice(closeIdx + 11);
                   inThinking = false;
+                } else if (openIdx !== -1) {
+                  const part = remaining.slice(0, openIdx);
+                  thoughts += part; h.onThoughts(thoughts);
+                  remaining = remaining.slice(openIdx + 10);
                 } else {
-                  thoughts += remaining;
-                  h.onThoughts(thoughts);
+                  thoughts += remaining; h.onThoughts(thoughts);
                   remaining = "";
                 }
               } else {
-                const startIdx = remaining.indexOf("<thinking>");
-                if (startIdx !== -1) {
-                  const part = remaining.slice(0, startIdx);
-                  text += part;
-                  if (part) h.onText(text);
-                  remaining = remaining.slice(startIdx + 10);
+                if (openIdx !== -1 && (closeIdx === -1 || openIdx < closeIdx)) {
+                  const part = remaining.slice(0, openIdx);
+                  text += part; if (part) h.onText(text);
+                  remaining = remaining.slice(openIdx + 10);
                   inThinking = true;
+                } else if (closeIdx !== -1) {
+                  const part = remaining.slice(0, closeIdx);
+                  text += part; if (part) h.onText(text);
+                  remaining = remaining.slice(closeIdx + 11);
                 } else {
-                  text += remaining;
-                  if (remaining) h.onText(text);
+                  text += remaining; if (remaining) h.onText(text);
                   remaining = "";
                 }
               }
@@ -336,7 +340,7 @@ const SEARCH_RE = /\[\[SEARCH:?\s*([^\]\n]+?)\s*\]\]/i;
 function fmtTime(sec: number): string { const m = Math.floor(sec / 60); const s = sec % 60; return `${m}:${s < 10 ? "0" : ""}${s}`; }
 
 function cleanForLog(t: string): string {
-  return t.replace(/\[\[SEARCH:?[^\]\n]*\]\]/gi, "").split("\n").map((l) => l.trim()).filter((l) => l.length > 2 && l !== "•" && l !== "-" && l !== "*").join("\n");
+  return t.replace(/\[\[SEARCH:?[^\]\n]*\]\]/gi, "").replace(/<\/?thinking>/gi, "").split("\n").map((l) => l.trim()).filter((l) => l.length > 2 && l !== "•" && l !== "-" && l !== "*").join("\n");
 }
 
 const DEEPEN_STEPS = [
@@ -388,7 +392,7 @@ function buildDeepThinkSystem(question: string, history: ChatMessage[]): string 
   blocks.push("# DeepThink — Autonomous Research Agent\nYou are DeepThink, Quix's deep research mode. You autonomously research the live web for several minutes, then deliver one comprehensive, expert-level answer.");
   blocks.push("## SEARCH TOOL\nWhen you need live information, output a line EXACTLY like this and STOP right after it:\n[[SEARCH: your precise query]]\nThe system runs the search and returns GLOBALLY numbered results ([1], [2], [3]... across all searches). Never invent results.");
   blocks.push("## THINK-SEARCH-THINK RHYTHM (CRITICAL)\n- NEVER chain searches back-to-back. After EVERY search you MUST write 3-6 analysis bullets about what you actually learned BEFORE choosing the next query.\n- NEVER pre-plan all queries. Each next query must be chosen from what you JUST learned.\n- NEVER repeat or lightly paraphrase an earlier query.\n- NEVER draft the final answer before the system tells you the research phase is over.\n- Cite sources in the final answer with their global numbers like [4] or [4,7].\n- You MUST run at least " + DEEPTHINK_MIN_SEARCHES + " searches and MAY run up to " + DEEPTHINK_MAX_SEARCHES + ".\n- FIRST output a short plan as bullets (• ) listing 4-8 sub-questions.\n- Cross-check important claims across multiple sources.");
-  blocks.push("## FINAL ANSWER\nOnly when the system tells you the research phase is over, write the final answer in clean markdown WITHOUT any [[SEARCH:]] line. Cite sources inline with their global numbers like [1]. Make it thorough, practical, well-structured. Do NOT talk about passes, timers or the system.");
+  blocks.push("## FINAL ANSWER\nOnly when the system tells you the research phase is over, write the final answer in clean markdown WITHOUT any [[SEARCH:]] line. Cite sources inline with their global numbers like [1]. Make it thorough, practical, well-structured. Do NOT mention passes, timers or the system.");
   blocks.push("# Global Knowledge\n" + globalKnowledge);
   blocks.push("# Global Instructions\n" + globalInstructions);
   blocks.push("# DeepThink Instructions\n" + deepthinkMd);
@@ -518,11 +522,6 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
 const MODEL_MD: Record<string, string> = { flash: flashMd, lite: liteMd, coder: coderMd, thinking: thinkingMd, deepthink: deepthinkMd };
 export function buildPrompt(model: string, text: string, history: ChatMessage[]): string {
   const blocks: string[] = ["# Global Knowledge\n" + globalKnowledge, "# Global Instructions\n" + globalInstructions, "# Model Instructions\n" + (MODEL_MD[model] || "")];
-  
-  if (model === "thinking" || model === "deepthink") {
-    blocks.unshift("# REASONING PROTOCOL\nYou are in deep reasoning mode. Before answering, you MUST think step-by-step inside <thinking> and </thinking> tags. Write your internal thoughts, analysis, and planning inside these tags. Do not output the final answer until you close the </thinking> tag. The user will see your thinking process live.");
-  }
-  
   const sess = useAuthStore.getState().session;
   if (sess?.user) { const meta = (sess.user.user_metadata || {}) as any; const name = meta.full_name || meta.name || ""; blocks.push(`--- User identity (from account) ---\n${name ? `Name: ${name}\n` : ""}${sess.user.email ? `Email: ${sess.user.email}\n` : ""}Use it naturally (greet by name when appropriate).`); }
   const uid = sess?.user?.id;
