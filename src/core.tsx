@@ -9,7 +9,7 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.9.7";
+export const APP_VERSION = "v2.9.8";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
@@ -53,7 +53,7 @@ let sb: any = null;
 try { const e = env(); if (e.VITE_SUPABASE_URL && e.VITE_SUPABASE_ANON_KEY) { sb = createClient(e.VITE_SUPABASE_URL, e.VITE_SUPABASE_ANON_KEY); } } catch { sb = null; }
 export const supabase = () => sb;
 
-/* ================= AUTH (resets per-user stores on switch) ================= */
+/* ================= AUTH ================= */
 export const useAuthStore = create<any>((set) => ({
   session: null,
   init: () => {
@@ -96,7 +96,7 @@ export const useChatStore = create<any>((set) => ({
   resetChat: () => set({ messages: [], currentChatId: null, chatTitle: "New Chat" }),
 }));
 
-/* ================= PROFILE (per-user) ================= */
+/* ================= PROFILE ================= */
 const PROF_KEY = "quix_profile_v1";
 const profKey = (uid: string) => `${PROF_KEY}_${uid}`;
 const emptyProfile = () => ({ name: "", email: "", avatar: null });
@@ -131,7 +131,7 @@ export const useProfileStore = create<any>((set) => ({
   }),
 }));
 
-/* ================= USAGE (per-user per-day) ================= */
+/* ================= USAGE ================= */
 export const LIMITS: Record<string, number> = { flash: 30, lite: 50, thinking: 10, deepthink: 1, coder: 10 };
 const FALLBACK: Record<string, string[]> = { flash: ["lite"], lite: ["flash"], thinking: ["flash", "lite"], deepthink: [], coder: ["flash", "lite"] };
 const usageKey = (uid: string | null) => "quix_usage_" + dayKey() + "_" + (uid || "guest");
@@ -164,7 +164,6 @@ export const useMemoryStore = create<any>((set, get) => ({
   addAuto: async (uid: string, text: string) => { if (!sb) return; const { data } = await sb.from("memories").insert({ user_id: uid, text, source: "auto" }).select().single(); if (data) set((s: any) => ({ memories: [...s.memories, { id: data.id, text: data.text }] })); },
 }));
 
-// runs on sign-in / sign-out / account switch so no data leaks between accounts
 function syncUserStores(uid: string | null) {
   try { useProfileStore.getState().loadFor(uid); } catch {}
   try { useUsageStore.getState().setUser(uid); } catch {}
@@ -218,7 +217,7 @@ export async function fetchMessages(chatId: string): Promise<ChatMessage[]> { if
 export async function renameChat(id: string, title: string) { if (!sb) return; try { await sb.from("chats").update({ title }).eq("id", id); } catch {} }
 export async function deleteChat(id: string) { if (!sb) return; try { await sb.from("chats").delete().eq("id", id); } catch {} }
 
-/* ================= GEMINI (per-request abort controller) ================= */
+/* ================= GEMINI ================= */
 export function abortGemini() { window.dispatchEvent(new Event("quix-stop")); }
 export interface GeminiResult { text: string; thoughts: string; sources: SourceItem[] }
 
@@ -239,7 +238,10 @@ export async function askGeminiStream(model: string, prompt: string, opts: { sea
     if (!res.ok && opts.search) { res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }] }), signal }); }
     if (!res.ok || !res.body) { const d = await res.json().catch(() => null); throw new Error(d?.error?.message || `${MODELS[model]?.name || model} request failed`); }
     const reader = res.body.getReader(); const dec = new TextDecoder();
-    let buf = "", text = "", thoughts = ""; const sources: SourceItem[] = []; const seen = new Set<string>();
+    let buf = "", text = "", thoughts = "";
+    const sources: SourceItem[] = []; const seen = new Set<string>();
+    let inThinking = false;
+    
     while (true) {
       const { done, value } = await reader.read(); if (done) break;
       buf += dec.decode(value, { stream: true });
@@ -250,10 +252,51 @@ export async function askGeminiStream(model: string, prompt: string, opts: { sea
         try {
           const json = JSON.parse(payload);
           (json?.candidates?.[0]?.groundingMetadata?.groundingChunks || []).forEach((c: any) => { const uri = c?.web?.uri; if (uri && !seen.has(uri)) { seen.add(uri); sources.push({ title: c?.web?.title || uri, uri }); } });
-          let td = "", xd = "";
-          (json?.candidates?.[0]?.content?.parts || []).forEach((p: any) => { if (p?.thought) xd += p?.text || ""; else td += p?.text || ""; });
-          if (xd) { thoughts += xd; h.onThoughts(thoughts); }
-          if (td) { text += td; h.onText(text); }
+          
+          let textChunk = "";
+          let thoughtChunk = "";
+          (json?.candidates?.[0]?.content?.parts || []).forEach((p: any) => { 
+            if (p?.thought) { thoughtChunk += p?.text || ""; } 
+            else { textChunk += p?.text || ""; } 
+          });
+
+          if (thoughtChunk) {
+            thoughts += thoughtChunk;
+            h.onThoughts(thoughts);
+          }
+          
+          if (textChunk) {
+            let remaining = textChunk;
+            while (remaining.length > 0) {
+              if (inThinking) {
+                const endIdx = remaining.indexOf("</thinking>");
+                if (endIdx !== -1) {
+                  const part = remaining.slice(0, endIdx);
+                  thoughts += part;
+                  h.onThoughts(thoughts);
+                  remaining = remaining.slice(endIdx + 11);
+                  inThinking = false;
+                } else {
+                  thoughts += remaining;
+                  h.onThoughts(thoughts);
+                  remaining = "";
+                }
+              } else {
+                const startIdx = remaining.indexOf("<thinking>");
+                if (startIdx !== -1) {
+                  const part = remaining.slice(0, startIdx);
+                  text += part;
+                  if (part) h.onText(text);
+                  remaining = remaining.slice(startIdx + 10);
+                  inThinking = true;
+                } else {
+                  text += remaining;
+                  if (remaining) h.onText(text);
+                  remaining = "";
+                }
+              }
+            }
+          }
         } catch {}
       }
     }
@@ -475,6 +518,11 @@ export async function runDeepThink(question: string, history: ChatMessage[], h: 
 const MODEL_MD: Record<string, string> = { flash: flashMd, lite: liteMd, coder: coderMd, thinking: thinkingMd, deepthink: deepthinkMd };
 export function buildPrompt(model: string, text: string, history: ChatMessage[]): string {
   const blocks: string[] = ["# Global Knowledge\n" + globalKnowledge, "# Global Instructions\n" + globalInstructions, "# Model Instructions\n" + (MODEL_MD[model] || "")];
+  
+  if (model === "thinking" || model === "deepthink") {
+    blocks.unshift("# REASONING PROTOCOL\nYou are in deep reasoning mode. Before answering, you MUST think step-by-step inside <thinking> and </thinking> tags. Write your internal thoughts, analysis, and planning inside these tags. Do not output the final answer until you close the </thinking> tag. The user will see your thinking process live.");
+  }
+  
   const sess = useAuthStore.getState().session;
   if (sess?.user) { const meta = (sess.user.user_metadata || {}) as any; const name = meta.full_name || meta.name || ""; blocks.push(`--- User identity (from account) ---\n${name ? `Name: ${name}\n` : ""}${sess.user.email ? `Email: ${sess.user.email}\n` : ""}Use it naturally (greet by name when appropriate).`); }
   const uid = sess?.user?.id;
