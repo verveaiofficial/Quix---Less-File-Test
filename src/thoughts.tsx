@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { SourceItem, useStreamText } from "./core";
+import { SourceItem } from "./core";
 import { ORB_COLORS, qtsCSS, searchIconSvg } from "./styles";
 
 function domainOf(uri: string): string { try { return new URL(uri).hostname.replace(/^www\./, ""); } catch { return ""; } }
@@ -29,18 +29,15 @@ function SourcesPanel({ sources, onClose }: { sources: SourceItem[]; onClose: ()
   </>), document.body);
 }
 
-export function ThinkingStatus({ done, sources, thoughts, thinkTime }: { done: boolean; sources?: SourceItem[]; thoughts?: string; thinkTime?: number }) {
+// thoughts arrive pre-streamed from AiMessage; typingDone tells us when the visible typing finished
+export function ThinkingStatus({ done, sources, thoughts, thinkTime, typingDone }: { done: boolean; sources?: SourceItem[]; thoughts?: string; thinkTime?: number; typingDone?: boolean }) {
   const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(true);
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  const fullThoughts = thoughts || "";
-  const [caughtUp, setCaughtUp] = useState(done);
   useEffect(() => { if (done) return; const t = setInterval(() => setElapsed((p) => p + 1), 1000); return () => clearInterval(t); }, [done]);
-  const shown = useStreamText(fullThoughts, !caughtUp, 12, 5);
-  useEffect(() => { if (done && !caughtUp && shown.length >= fullThoughts.length) setCaughtUp(true); }, [done, caughtUp, shown, fullThoughts]);
-  useEffect(() => { if (caughtUp) setExpanded(false); }, [caughtUp]);
+  useEffect(() => { if (typingDone) setExpanded(false); }, [typingDone]);
   const finalTime = thinkTime != null ? thinkTime : elapsed;
-  const thoughtParas = shown.split(/\n+/).map((t) => t.trim()).filter(Boolean);
+  const thoughtParas = (thoughts || "").split(/\n+/).map((t) => t.trim()).filter(Boolean);
   const found = sources?.length ?? 0;
   const favs = (sources || []).slice(0, 6).map((s) => faviconUrl(s.uri)).filter(Boolean) as string[];
   const hasReason = thoughtParas.length > 0 || found > 0;
