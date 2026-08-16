@@ -6,6 +6,8 @@ import { PendingAttachment, readFileAsAttachment } from "./ui";
 
 const WAVE_BARS = 24;
 
+const ibFastCSS = `.input-wrapper{transition:none !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
+
 export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
   const { activeModel, setActiveModel, isSending } = useChatStore();
   const messages = useChatStore((s) => s.messages);
@@ -16,7 +18,6 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const [menuOpen, setMenuOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [spinClass, setSpinClass] = useState("");
-  const [bottomOffset, setBottomOffset] = useState(0);
   const [listening, setListening] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
@@ -27,6 +28,8 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const committedRef = useRef<string[]>([]);
   const finishTimeoutRef = useRef<any>(null);
   const spinDir = useRef(1);
+  const offsetRef = useRef(0);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
@@ -35,8 +38,34 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const session = useAuthStore((s) => s.session);
   const isGuest = !session;
 
+  // per-frame keyboard glue: reads the viewport every frame and writes style.bottom
+  // directly on the DOM (no React state, no re-renders, no event throttling).
+  useEffect(() => {
+    let raf = 0;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const w = wrapRef.current;
+      if (!w || !window.visualViewport) return;
+      const vv = window.visualViewport;
+      const kbSize = window.innerHeight - vv.height;
+      if (kbSize < 120 && offsetRef.current === 0) return;
+      const kbTop = vv.offsetTop + vv.height;
+      const wr = w.getBoundingClientRect();
+      const delta = wr.bottom - kbTop;
+      if (kbSize < 120) {
+        if (offsetRef.current !== 0) { offsetRef.current = 0; w.style.bottom = "0px"; }
+        return;
+      }
+      if (Math.abs(delta) < 1) return;
+      const next = Math.max(0, offsetRef.current + delta);
+      offsetRef.current = next;
+      w.style.bottom = `${next}px`;
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
   useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
-  useEffect(() => { const r = () => { if (window.visualViewport) { const kb = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop; setBottomOffset(Math.max(0, kb)); } }; if (window.visualViewport) window.visualViewport.addEventListener("resize", r); return () => { if (window.visualViewport) window.visualViewport.removeEventListener("resize", r); }; }, []);
   useEffect(() => { return () => { listeningRef.current = false; try { recRef.current?.stop(); } catch {} if (finishTimeoutRef.current) clearTimeout(finishTimeoutRef.current); }; }, []);
 
   const prevent = (e: any) => e.preventDefault();
@@ -153,9 +182,10 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   return (
     <>
       <style>{ibCSS}</style>
+      <style>{ibFastCSS}</style>
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
       <input type="file" ref={imgRef} accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
-      <div className="input-wrapper" style={{ bottom: `${bottomOffset}px` }}>
+      <div className="input-wrapper" ref={wrapRef} style={{ bottom: 0 }}>
         <div className={`input-bar ${listening ? "listening" : ""}`}>
           {!isDeepThink && attachments.length > 0 && (<div className="attach-row">{attachments.map((a) => (<div className="attach-chip" key={a.id}>{a.kind === "image" && a.previewUrl ? <img className="attach-thumb" src={a.previewUrl} alt={a.name} /> : null}<span>{a.name}</span><button className="attach-remove" onClick={() => setAttachments((p) => p.filter((x) => x.id !== a.id))}>×</button></div>))}</div>)}
           {listening ? (
@@ -163,7 +193,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
               {Array.from({ length: WAVE_BARS }).map((_, i) => (<span key={i} style={{ animationDelay: `${(i % 8) * 0.09}s` }} />))}
             </div>
           ) : (
-            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research..." : "Ask Quix..."} rows={1} value={inputValue} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} onBlur={() => { if (!menuOpen) setBottomOffset(0); }} />
+            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research..." : "Ask Quix..."} rows={1} value={inputValue} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} />
           )}
           <div className="action-row">
             <div className="action-left">
