@@ -31,22 +31,34 @@ export function MessageList() {
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
+    const container = c.firstElementChild as HTMLElement;
+    if (!container) return;
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     if (!lastUser || scrolledUserIds.current.has(lastUser.id)) return;
     scrolledUserIds.current.add(lastUser.id);
 
     const doScroll = () => {
-      const el = c.querySelector(`[data-mid="${lastUser.id}"]`) as HTMLElement;
+      const el = container.querySelector(`[data-mid="${lastUser.id}"]`) as HTMLElement;
       if (!el) return;
       const header = document.querySelector("#chat-header") as HTMLElement | null;
       const cRect = c.getBoundingClientRect();
       const hRect = header ? header.getBoundingClientRect() : null;
-      const elRect = el.getBoundingClientRect();
-      // absolute position of the element inside scroll content
-      const elTop = elRect.top - cRect.top + c.scrollTop;
-      // gap between container top and header bottom (0 if container already starts under header)
       const gap = hRect ? Math.max(0, hRect.bottom - cRect.top) : 0;
-      c.scrollTo({ top: Math.max(0, elTop - gap - 8), behavior: "smooth" });
+
+      // measure with no extra padding
+      container.style.paddingBottom = "";
+      const elRect = el.getBoundingClientRect();
+      const elTop = elRect.top - cRect.top + c.scrollTop;
+      const lastChild = container.lastElementChild as HTMLElement;
+      const lastRect = lastChild.getBoundingClientRect();
+      const contentBottom = lastRect.bottom - cRect.top + c.scrollTop;
+
+      const desired = Math.max(0, elTop - gap - 8);
+      // create space below so the user message CAN reach the top
+      const need = desired + c.clientHeight - contentBottom;
+      if (need > 0) container.style.paddingBottom = `${need}px`;
+
+      c.scrollTo({ top: desired, behavior: "smooth" });
     };
 
     requestAnimationFrame(() => { doScroll(); setTimeout(doScroll, 120); });
