@@ -5,7 +5,6 @@ import { umCSS, amCSS, mlCSS } from "./styles";
 import { MarkdownText, BubbleIndicator } from "./msgstream";
 import { ThinkingStatus } from "./thoughts";
 
-// re-exports so any old `from "./ui"` imports keep working
 export { MarkdownText, BubbleIndicator, faviconUrl, domainOf } from "./msgstream";
 export { ThinkingStatus } from "./thoughts";
 
@@ -24,7 +23,44 @@ export function AiMessage({ message, mid }: { message: ChatMessage & { thinkTime
   return (<div className="message-ai" data-mid={mid}><style>{amCSS}</style><div className="ai-content">{isThinkingModel ? (<ThinkingStatus done={message.status !== "thinking"} finished={isDone} sources={message.sources} thoughts={message.thoughts} thinkTime={message.thinkTime} />) : (<BubbleIndicator dimmed={isDone} />)}<div style={{ width: "100%", maxWidth: 640 }}>{shouldStream && <MarkdownText text={shown} mid={mid} canvas={canvasOn} sources={message.sources} />}{(message.status === "done" || message.status === "error") && <MarkdownText text={message.content} mid={mid} canvas={canvasOn} sources={message.sources} />}</div></div>{message.status === "done" && (<div className="msg-actions"><button className={message.feedback === "up" ? "active" : ""} onClick={() => updateMessage(message.id, { feedback: message.feedback === "up" ? undefined : "up" })}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 10v12" /><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" /></svg></button><button className={message.feedback === "down" ? "active" : ""} onClick={() => updateMessage(message.id, { feedback: message.feedback === "down" ? undefined : "down" })}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 14V2" /><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" /></svg></button><button onClick={() => copyText(message.content)}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg></button></div>)}</div>);
 }
 
-export function MessageList() { const messages = useChatStore((s) => s.messages); const ref = useRef<HTMLDivElement>(null); const initialLast = useRef<string | null | undefined>(undefined); const lastScrolled = useRef<string | null>(null); useEffect(() => { const c = ref.current; if (c) c.scrollTop = c.scrollHeight; }, []); useEffect(() => { const c = ref.current; if (!c) return; const container = c.firstElementChild as HTMLElement; if (!container) return; const lastUser = [...messages].reverse().find((m) => m.role === "user"); if (initialLast.current === undefined) { initialLast.current = lastUser ? lastUser.id : null; return; } if (!lastUser) return; if (lastScrolled.current === lastUser.id) return; lastScrolled.current = lastUser.id; requestAnimationFrame(() => { const el = container.querySelector(`[data-mid="${lastUser.id}"]`) as HTMLElement; if (!el) return; const lastChild = container.lastElementChild as HTMLElement; const contentH = lastChild.offsetTop + lastChild.offsetHeight; const elTop = el.offsetTop; const need = elTop - 8 + c.clientHeight - contentH; const cur = parseFloat(getComputedStyle(container).paddingBottom) || 0; if (need > cur) container.style.paddingBottom = `${need}px`; requestAnimationFrame(() => { el.scrollIntoView({ block: "start", behavior: "smooth" }); }); setTimeout(() => el.scrollIntoView({ block: "start", behavior: "smooth" }), 80); }); }, [messages]); return (<><style>{mlCSS}</style><div className="message-scroll" ref={ref}><div className="message-container">{messages.map((m) => m.role === "user" ? (<UserMessage key={m.id} mid={m.id} content={m.content} attachments={m.attachments} />) : (<AiMessage key={m.id} mid={m.id} message={m as any} />))}</div></div></>); }
+export function MessageList() {
+  const messages = useChatStore((s) => s.messages);
+  const ref = useRef<HTMLDivElement>(null);
+  const mounted = useRef(false);
+  const lastUserScrolled = useRef<string | null>(null);
+
+  // first open: jump straight to the bottom
+  useEffect(() => { const c = ref.current; if (c) c.scrollTop = c.scrollHeight; }, []);
+
+  // ONLY when a new user message is sent: smooth-scroll it right below the header.
+  // AI messages / streaming never trigger any scroll.
+  useEffect(() => {
+    const c = ref.current;
+    if (!c) return;
+    const container = c.firstElementChild as HTMLElement;
+    if (!container) return;
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    if (!mounted.current) { mounted.current = true; lastUserScrolled.current = lastUser ? lastUser.id : null; return; }
+    if (!lastUser || lastUserScrolled.current === lastUser.id) return;
+    lastUserScrolled.current = lastUser.id;
+    requestAnimationFrame(() => {
+      const el = container.querySelector(`[data-mid="${lastUser.id}"]`) as HTMLElement;
+      if (!el) return;
+      container.style.paddingBottom = "";
+      const cRect = c.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      const lastChild = container.lastElementChild as HTMLElement;
+      const lastRect = lastChild.getBoundingClientRect();
+      const contentBottom = c.scrollTop + (lastRect.bottom - cRect.top);
+      const desired = c.scrollTop + (elRect.top - cRect.top) - 8;
+      const need = desired + c.clientHeight - contentBottom;
+      if (need > 0) container.style.paddingBottom = `${need}px`;
+      requestAnimationFrame(() => { c.scrollTo({ top: Math.max(0, desired), behavior: "smooth" }); });
+    });
+  }, [messages]);
+
+  return (<><style>{mlCSS}</style><div className="message-scroll" ref={ref}><div className="message-container">{messages.map((m) => m.role === "user" ? (<UserMessage key={m.id} mid={m.id} content={m.content} attachments={m.attachments} />) : (<AiMessage key={m.id} mid={m.id} message={m as any} />))}</div></div></>);
+}
 
 export interface PendingAttachment { id: string; name: string; kind: "image" | "pdf" | "text"; mimeType: string; base64: string; text?: string; previewUrl?: string }
 export function readFileAsAttachment(file: File): Promise<PendingAttachment | null> { return new Promise((resolve) => { if (file.size > 4 * 1024 * 1024) return resolve(null); const isImage = file.type.startsWith("image/"); const isPdf = file.type === "application/pdf"; const isText = file.type.startsWith("text/") || /\.(md|txt|json|js|ts|tsx|jsx|html|css|csv)$/i.test(file.name); const reader = new FileReader(); if (isImage || isPdf) { reader.onload = () => { const result = String(reader.result || ""); resolve({ id: rid(), name: file.name, kind: isImage ? "image" : "pdf", mimeType: file.type, base64: result.split(",")[1] || "", previewUrl: isImage ? result : undefined }); }; reader.onerror = () => resolve(null); reader.readAsDataURL(file); } else if (isText) { reader.onload = () => resolve({ id: rid(), name: file.name, kind: "text", mimeType: file.type || "text/plain", base64: "", text: String(reader.result || "") }); reader.onerror = () => resolve(null); reader.readAsText(file); } else resolve(null); }); }
