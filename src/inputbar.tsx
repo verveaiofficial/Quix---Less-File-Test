@@ -6,7 +6,6 @@ import { PendingAttachment, readFileAsAttachment } from "./ui";
 
 const WAVE_BARS = 24;
 
-// no easing, no delay: the bar is glued to the keyboard edge frame-by-frame
 const ibFastCSS = `.input-wrapper{transition:none !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
 
 export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
@@ -19,7 +18,6 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const [menuOpen, setMenuOpen] = useState(false);
   const [modelMenuOpen, setModelMenuOpen] = useState(false);
   const [spinClass, setSpinClass] = useState("");
-  const [bottomOffset, setBottomOffset] = useState(0);
   const [listening, setListening] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
@@ -31,7 +29,6 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const finishTimeoutRef = useRef<any>(null);
   const spinDir = useRef(1);
   const offsetRef = useRef(0);
-  const trackRaf = useRef(0);
   const wrapRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -41,42 +38,31 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const session = useAuthStore((s) => s.session);
   const isGuest = !session;
 
-  // 1:1 keyboard tracking: measure the gap between the bar's bottom edge and the
-  // keyboard's top edge, close the gap exactly, every frame. no prediction, no easing.
+  // per-frame keyboard glue: reads the viewport every frame and writes style.bottom
+  // directly on the DOM (no React state, no re-renders, no event throttling).
   useEffect(() => {
-    const track = () => {
-      cancelAnimationFrame(trackRaf.current);
-      trackRaf.current = requestAnimationFrame(() => {
-        const w = wrapRef.current;
-        if (!w || !window.visualViewport) return;
-        const vv = window.visualViewport;
-        const kbSize = window.innerHeight - vv.height;
-        // ignore url-bar show/hide and other tiny viewport changes
-        if (kbSize < 120 && offsetRef.current === 0) return;
-        const kbTop = vv.offsetTop + vv.height;
-        const wr = w.getBoundingClientRect();
-        const delta = wr.bottom - kbTop;
-        if (kbSize < 120) {
-          if (offsetRef.current !== 0) { offsetRef.current = 0; setBottomOffset(0); }
-          return;
-        }
-        if (Math.abs(delta) < 1) return;
-        const next = Math.max(0, offsetRef.current + delta);
-        offsetRef.current = next;
-        setBottomOffset(next);
-      });
-    };
-    if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", track);
-      window.visualViewport.addEventListener("scroll", track);
-    }
-    return () => {
-      if (window.visualViewport) {
-        window.visualViewport.removeEventListener("resize", track);
-        window.visualViewport.removeEventListener("scroll", track);
+    let raf = 0;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const w = wrapRef.current;
+      if (!w || !window.visualViewport) return;
+      const vv = window.visualViewport;
+      const kbSize = window.innerHeight - vv.height;
+      if (kbSize < 120 && offsetRef.current === 0) return;
+      const kbTop = vv.offsetTop + vv.height;
+      const wr = w.getBoundingClientRect();
+      const delta = wr.bottom - kbTop;
+      if (kbSize < 120) {
+        if (offsetRef.current !== 0) { offsetRef.current = 0; w.style.bottom = "0px"; }
+        return;
       }
-      cancelAnimationFrame(trackRaf.current);
+      if (Math.abs(delta) < 1) return;
+      const next = Math.max(0, offsetRef.current + delta);
+      offsetRef.current = next;
+      w.style.bottom = `${next}px`;
     };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
   }, []);
 
   useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
@@ -199,7 +185,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
       <style>{ibFastCSS}</style>
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
       <input type="file" ref={imgRef} accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
-      <div className="input-wrapper" ref={wrapRef} style={{ bottom: `${bottomOffset}px` }}>
+      <div className="input-wrapper" ref={wrapRef} style={{ bottom: 0 }}>
         <div className={`input-bar ${listening ? "listening" : ""}`}>
           {!isDeepThink && attachments.length > 0 && (<div className="attach-row">{attachments.map((a) => (<div className="attach-chip" key={a.id}>{a.kind === "image" && a.previewUrl ? <img className="attach-thumb" src={a.previewUrl} alt={a.name} /> : null}<span>{a.name}</span><button className="attach-remove" onClick={() => setAttachments((p) => p.filter((x) => x.id !== a.id))}>×</button></div>))}</div>)}
           {listening ? (
