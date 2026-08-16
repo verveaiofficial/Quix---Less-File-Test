@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { SourceItem, useStreamText } from "./core";
+import { SourceItem } from "./core";
 import { qtsCSS, searchIconSvg } from "./styles";
 import { BubbleIndicator, faviconUrl, domainOf } from "./msgstream";
 
@@ -29,26 +29,10 @@ export function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }:
   const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(true);
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  const [caughtUp, setCaughtUp] = useState(false);
-
-  const fullThoughts = thoughts || "";
-  // Fast enough to stay live with the server (no lag), but still smooth
-  const shownThoughts = useStreamText(fullThoughts, !caughtUp, 15, 4);
-
   useEffect(() => { if (done) return; const t = setInterval(() => setElapsed((p) => p + 1), 1000); return () => clearInterval(t); }, [done]);
-
-  // Mark caught up the moment the typewriter reaches the full thoughts
-  useEffect(() => {
-    if (!caughtUp && shownThoughts.length >= fullThoughts.length) setCaughtUp(true);
-  }, [caughtUp, shownThoughts.length, fullThoughts.length]);
-
-  // Only collapse after thinking ended AND everything is shown
-  useEffect(() => {
-    if (done && caughtUp) setExpanded(false);
-  }, [done, caughtUp]);
-
+  useEffect(() => { if (done) setExpanded(false); }, [done]);
   const finalTime = thinkTime != null ? thinkTime : elapsed;
-  const thoughtParas = shownThoughts.split(/\n+/).map((t) => t.trim()).filter(Boolean);
+  const thoughtParas = (thoughts || "").split(/\n+/).map((t) => t.trim()).filter(Boolean);
   const found = sources?.length ?? 0;
   const favs = (sources || []).slice(0, 6).map((s) => faviconUrl(s.uri)).filter(Boolean) as string[];
   const hasReason = thoughtParas.length > 0 || found > 0;
