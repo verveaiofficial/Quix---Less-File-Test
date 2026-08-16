@@ -6,7 +6,8 @@ import { PendingAttachment, readFileAsAttachment } from "./ui";
 
 const WAVE_BARS = 24;
 
-const ibFastCSS = `.input-wrapper{transition:bottom .1s cubic-bezier(.2,.9,.3,1) !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
+// animated, but faster than the phone keyboard so the bar always leads
+const ibFastCSS = `.input-wrapper{transition:bottom .14s cubic-bezier(.22,.9,.32,1) !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
 
 export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
   const { activeModel, setActiveModel, isSending } = useChatStore();
@@ -31,7 +32,8 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const spinDir = useRef(1);
   const lastKb = useRef(0);
   const offsetRef = useRef(0);
-  const focusAt = useRef(0);
+  const openUntil = useRef(0);
+  const closeUntil = useRef(0);
   const wrapRef = useRef<HTMLDivElement>(null);
   const alignRaf = useRef(0);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -43,28 +45,30 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const isGuest = !session;
   const isCoarse = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 
+  const jumpTo = (v: number) => { offsetRef.current = v; setBottomOffset(v); };
+
   const alignToKeyboard = () => {
     cancelAnimationFrame(alignRaf.current);
     alignRaf.current = requestAnimationFrame(() => {
       const w = wrapRef.current;
       if (!w || !window.visualViewport) return;
+      const now = Date.now();
+      if (now < openUntil.current || now < closeUntil.current) return;
       const vv = window.visualViewport;
       const kbOpen = window.innerHeight - vv.height > 80;
-      // keyboard not open yet (right after focus) -> trust the prediction, don't yank down
-      if (!kbOpen && Date.now() - focusAt.current < 700 && focusAt.current > 0) return;
       const kbTop = vv.offsetTop + vv.height;
       const wr = w.getBoundingClientRect();
       const delta = wr.bottom - kbTop;
+      // keyboard closing -> drop now, ahead of it
+      if (delta < -40 && offsetRef.current > 40) { closeUntil.current = now + 500; jumpTo(0); return; }
+      // keyboard opened without our focus hook -> jump up ahead of it
+      if (kbOpen && delta > 40) { openUntil.current = now + 450; jumpTo(offsetRef.current + delta); return; }
       if (Math.abs(delta) < 3) {
-        if (kbOpen && offsetRef.current > 50) {
-          lastKb.current = offsetRef.current;
-          try { localStorage.setItem("quix_kb_h", String(offsetRef.current)); } catch {}
-        }
+        if (kbOpen && offsetRef.current > 50) { lastKb.current = offsetRef.current; try { localStorage.setItem("quix_kb_h", String(offsetRef.current)); } catch {} }
         return;
       }
-      const next = Math.max(0, offsetRef.current + delta);
-      offsetRef.current = next;
-      setBottomOffset(next);
+      // tiny smooth correction
+      jumpTo(Math.max(0, offsetRef.current + delta));
     });
   };
   const alignRef = useRef(alignToKeyboard);
@@ -92,19 +96,19 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
 
   const onFocused = () => {
     if (!isCoarse) return;
-    focusAt.current = Date.now();
-    const predict = lastKb.current || Math.round(window.innerHeight * 0.42);
-    offsetRef.current = predict;
-    setBottomOffset(predict);
-    setTimeout(() => alignRef.current(), 250);
+    const now = Date.now();
+    openUntil.current = now + 450;
+    closeUntil.current = 0;
+    // animate up fast to the remembered keyboard height (leads the keyboard)
+    jumpTo(lastKb.current || Math.min(560, Math.max(220, Math.round(window.innerHeight * 0.42))));
     setTimeout(() => alignRef.current(), 500);
     setTimeout(() => alignRef.current(), 800);
   };
   const onBlurred = () => {
     if (!menuOpen) {
-      focusAt.current = 0;
-      offsetRef.current = 0;
-      setBottomOffset(0);
+      openUntil.current = 0;
+      closeUntil.current = Date.now() + 500;
+      jumpTo(0);
     }
   };
 
