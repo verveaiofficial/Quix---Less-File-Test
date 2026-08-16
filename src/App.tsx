@@ -77,11 +77,11 @@ export default function App() {
     }
 
     const chain = CHAIN[startModel] || [startModel, "flash", "lite"];
-    const attempt = (i: number) => {
+    const attempt = (i: number, retries: number) => {
       if (i >= chain.length) { updateMessage(aiId, { content: "All models are out of quota for today.", status: "error" }); setIsSending(false); return; }
       const m = chain[i];
-      if (m !== useChatStore.getState().activeModel) setActiveModel(m);
-      useUsageStore.getState().consume(m);
+      // count usage once per model, not per retry
+      if (retries === 0) useUsageStore.getState().consume(m);
       const isThinkM = m === "thinking";
       const isCoderM = m === "coder";
       const t0 = Date.now();
@@ -111,11 +111,20 @@ export default function App() {
           const tt = freezeThink();
           if (idx > -1) { updateMessage(aiId, { thoughts: full.slice(0, idx), content: full.slice(idx + THINK_SEP.length).replace(/^\n+/, "") || "Done.", sources: r.sources, status: "streaming", doneStreaming: true, ...(tt != null ? { thinkTime: tt } : {}) } as any); }
           else if (full) { updateMessage(aiId, { content: full, sources: r.sources, status: "streaming", doneStreaming: true, ...(tt != null ? { thinkTime: tt } : {}) } as any); }
-          else { attempt(i + 1); }
+          else { attempt(i + 1, 0); }
         },
-      }).catch(() => { attempt(i + 1); });
+      }).catch((e: any) => {
+        const msg = String((e && e.message) || e || "");
+        const quotaOrKey = /exhausted|quota|429|503|unavailable|not valid|permission/i.test(msg);
+        // network/stream death -> retry SAME model (up to 2x), never switch
+        if (!quotaOrKey && retries < 2) { attempt(i, retries + 1); return; }
+        // only quota/key problems fall back to the next model, silently (selector untouched)
+        if (quotaOrKey && i + 1 < chain.length) { attempt(i + 1, 0); return; }
+        updateMessage(aiId, { content: quotaOrKey ? "All models are out of quota for today." : "Connection hiccup — send it again.", status: "error" });
+        setIsSending(false);
+      });
     };
-    attempt(0);
+    attempt(0, 0);
   };
 
   return (
