@@ -6,7 +6,7 @@ import { PendingAttachment, readFileAsAttachment } from "./ui";
 
 const WAVE_BARS = 24;
 
-export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepThink, dtRunning }: { onSend?: (t: string, a: PendingAttachment[]) => void; onDeepThinkSend?: (t: string) => void; onDeepThinkStop?: () => void; isDeepThink?: boolean; dtRunning?: boolean }) {
+export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
   const { activeModel, setActiveModel, isSending } = useChatStore();
   const messages = useChatStore((s) => s.messages);
   const canvasOn = useCanvasStore((s) => s.on);
@@ -140,12 +140,12 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
   const pick = async (files: FileList | null) => { if (!files) return; const parsed = await Promise.all(Array.from(files).map(readFileAsAttachment)); setAttachments((p) => [...p, ...parsed.filter((x): x is PendingAttachment => x !== null)]); };
 
   const hasText = inputValue.trim().length > 0;
-  const showStop = isDeepThink ? !!dtRunning : isSending;
+  const showStop = isSending;
   const showMic = listening || (!showStop && !hasText);
 
   const pickModel = (id: string) => { if (isGuest && id !== "thinking") { setModelMenuOpen(false); useUIStore.getState().openAuth(); return; } setActiveModel(id); setModelMenuOpen(false); taRef.current?.blur(); };
-  const send = () => { const text = inputValue.trim(); if (!text) return; stopMic(); if (isDeepThink) { onDeepThinkSend?.(text); setInputValue(""); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } return; } if (attachments.length === 0 && !text) return; onSend?.(text, attachments); setInputValue(""); setAttachments([]); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } };
-  const stop = () => { if (isDeepThink) { onDeepThinkStop?.(); return; } abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
+  const send = () => { const text = inputValue.trim(); if (!text) return; stopMic(); if (attachments.length === 0 && !text) return; onSend?.(text, attachments); setInputValue(""); setAttachments([]); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } };
+  const stop = () => { abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
   const mainAction = () => { if (showStop) return stop(); if (finishing) return; if (listening) return finishMic(); if (hasText) return send(); return toggleMic(); };
 
   const sendIconKey = showStop ? "stop" : finishing ? "finishing" : listening ? "confirm" : showMic ? "mic" : "arrow";
@@ -163,7 +163,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
               {Array.from({ length: WAVE_BARS }).map((_, i) => (<span key={i} style={{ animationDelay: `${(i % 8) * 0.09}s` }} />))}
             </div>
           ) : (
-            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink..." : "Ask Quix..."} rows={1} value={inputValue} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} onBlur={() => { if (!menuOpen) setBottomOffset(0); }} />
+            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research..." : "Ask Quix..."} rows={1} value={inputValue} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} onBlur={() => { if (!menuOpen) setBottomOffset(0); }} />
           )}
           <div className="action-row">
             <div className="action-left">
@@ -193,12 +193,12 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
                   </button>
                   <div className={`pop-menu ${modelMenuOpen ? "show" : ""}`}>
                     {CHAT_MODELS.map((id) => {
-                      const locked = (isGuest && id !== "thinking") || id === "deepthink";
+                      const locked = isGuest && id !== "thinking";
                       return (
                         <div key={id} className={`model-item ${locked ? "locked" : ""}`} onClick={(e) => { e.stopPropagation(); if (locked) return; pickModel(id); }}>
                           {activeModel === id && !locked ? (<svg viewBox="0 0 24 24" fill="none" className="model-check" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>) : locked ? (<span dangerouslySetInnerHTML={{ __html: lockSvg }} />) : (<div style={{ width: 15, flexShrink: 0 }} />)}
                           <div className="model-item-content">
-                            <span className="model-title">{MODELS[id].name}{id === "deepthink" && <span className="beta-tag"> Coming soon</span>}{locked && id !== "deepthink" && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}</span>
+                            <span className="model-title">{MODELS[id].name}{id === "deepthink" && <span className="beta-tag"> Beta</span>}{locked && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}</span>
                             <span className="model-desc">{MODELS[id].desc}</span>
                           </div>
                         </div>
@@ -209,7 +209,7 @@ export function ChatInputBar({ onSend, onDeepThinkSend, onDeepThinkStop, isDeepT
               )}
             </div>
             <div className="action-right">
-              {canvasOn && !isDeepThink && !listening && (<button type="button" className="cv-pill" onClick={() => openFilesList()}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{fileCount > 0 ? ` · ${fileCount}` : ""}</button>)}
+              {canvasOn && !isDeepThink && !listening && (<button type="button" className="cv-pill" onClick={() => openFilesList()}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{fileCount > 0 ? ` · ${fileCount}` : ""}</button>)}
               <button type="button" className={`send-btn ${showStop ? "stop" : ""} ${finishing ? "finishing" : ""} ${showMic ? (listening ? "mic listening" : "mic") : ""}`} onClick={mainAction} disabled={finishing} aria-label={showStop ? "Stop" : finishing ? "Finishing up" : listening ? "Confirm voice input" : hasText ? "Send" : "Voice input"}>
                 <span className="morph-icon" key={sendIconKey}>
                   {showStop ? (

@@ -9,14 +9,17 @@ import coderMd from "../ai/models/coder/instructions.md?raw";
 import thinkingMd from "../ai/models/thinking/instructions.md?raw";
 import deepthinkMd from "../ai/models/deepthink/instructions.md?raw";
 
-export const APP_VERSION = "v2.3.1";
+export const APP_VERSION = "v2.9.9";
 export const THINK_SEP = "---ANSWER---";
 export const OBS_TAG = "[[OBS]]";
 export const GUEST_THINKING_LIMIT = 3;
 export const GEMINI_MODEL = "gemini-3.5-flash-lite";
 export const IMAGINE_URL = "https://quiximage.lovable.app/";
-export const DEEPTHINK_URL = "https://quix-deepthink.lovable.app/";
 export const CHAT_MODELS = ["flash", "lite", "coder", "thinking", "deepthink"];
+export const DEEPTHINK_MAX_SEARCHES = 20;
+export const DEEPTHINK_MIN_SEARCHES = 5;
+export const DEEPTHINK_MIN_MS = 5 * 60 * 1000;
+export const DEEPTHINK_MAX_MS = 8 * 60 * 1000;
 
 export const MODELS: Record<string, { name: string; desc: string; key: string }> = {
   flash: { name: "Quix 3 Flash", desc: "Balanced intelligence for daily tasks", key: "VITE_GEMINI_FLASH_API_KEY" },
@@ -28,16 +31,21 @@ export const MODELS: Record<string, { name: string; desc: string; key: string }>
 
 const env = () => (import.meta as any).env || {};
 export function apiKeyFor(model: string): string { const e = env(); const k = MODELS[model]?.key; return k ? e[k] || "" : ""; }
+export function deepthinkKeys(): string[] {
+  const e = env();
+  return [e.VITE_GEMINI_DEEPTHINK_API_KEY, e.VITE_GEMINI_DEEPTHINK_API_KEY_2, e.VITE_GEMINI_DEEPTHINK_API_KEY_3].filter((k: any) => !!k);
+}
 export const rid = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 export const dayKey = () => new Date().toISOString().slice(0, 10);
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /* ================= TYPES ================= */
-export interface SourceItem { title: string; uri: string }
+export interface SourceItem { title: string; uri: string; desc?: string }
 export interface AttachmentMeta { name: string; kind: "image" | "pdf" | "text"; previewUrl?: string }
 export interface ChatMessage {
   id: string; role: "user" | "ai"; model: string; content: string; thoughts?: string;
   doneStreaming?: boolean; createdAt: number; status?: "thinking" | "streaming" | "done" | "error";
-  sources?: SourceItem[]; attachments?: AttachmentMeta[]; feedback?: "up" | "down";
+  sources?: SourceItem[]; attachments?: AttachmentMeta[]; feedback?: "up" | "down"; thinkTime?: number;
 }
 
 /* ================= SUPABASE ================= */
@@ -50,10 +58,10 @@ export const useAuthStore = create<any>((set) => ({
   session: null,
   init: () => {
     if (!sb) return;
-    sb.auth.getSession().then(({ data }: any) => set({ session: data?.session || null }));
-    sb.auth.onAuthStateChange((_e: any, s: any) => { set({ session: s }); });
+    sb.auth.getSession().then(({ data }: any) => { set({ session: data?.session || null }); syncUserStores(data?.session?.user?.id ?? null); });
+    sb.auth.onAuthStateChange((_e: any, s: any) => { set({ session: s }); syncUserStores(s?.user?.id ?? null); });
   },
-  signOut: async () => { if (sb) await sb.auth.signOut(); set({ session: null }); },
+  signOut: async () => { if (sb) await sb.auth.signOut(); set({ session: null }); syncUserStores(null); },
 }));
 
 /* ================= UI ================= */
@@ -74,7 +82,7 @@ export const useUIStore = create<any>((set, get) => ({
   setFontScale: (s: number) => { const c = Math.min(1.3, Math.max(0.85, Math.round(s * 20) / 20)); try { localStorage.setItem(FONT_KEY, String(c)); } catch {} set({ fontScale: c }); },
 }));
 
-/* ================= CHAT (no local persistence) ================= */
+/* ================= CHAT ================= */
 export const useChatStore = create<any>((set) => ({
   activeModel: "thinking", messages: [], isSending: false, currentChatId: null, chatTitle: "New Chat", draft: "",
   setActiveModel: (m: string) => set({ activeModel: m }),
@@ -88,8 +96,10 @@ export const useChatStore = create<any>((set) => ({
   resetChat: () => set({ messages: [], currentChatId: null, chatTitle: "New Chat" }),
 }));
 
-/* ================= PROFILE (debounced DB save, only valid columns) ================= */
+/* ================= PROFILE ================= */
 const PROF_KEY = "quix_profile_v1";
+const profKey = (uid: string) => `${PROF_KEY}_${uid}`;
+const emptyProfile = () => ({ name: "", email: "", avatar: null });
 let profileSaveTimer: any = null;
 export function saveProfileToDB(profile: any) {
   if (profileSaveTimer) clearTimeout(profileSaveTimer);
@@ -102,48 +112,64 @@ export function saveProfileToDB(profile: any) {
   }, 800);
 }
 export const useProfileStore = create<any>((set) => ({
-  profile: (() => { try { const raw = localStorage.getItem(PROF_KEY); if (raw) { const p = { name: "", email: "", avatar: null, ...JSON.parse(raw) }; delete (p as any).username; return p; } } catch {} return { name: "", email: "", avatar: null }; })(),
+  profile: emptyProfile(),
+  loadedFor: null as string | null,
+  loadFor: (uid: string | null) => {
+    if (!uid) { set({ profile: emptyProfile(), loadedFor: null }); return; }
+    try {
+      const raw = localStorage.getItem(profKey(uid));
+      const p = raw ? { ...emptyProfile(), ...JSON.parse(raw) } : emptyProfile();
+      delete (p as any).username;
+      set({ profile: p, loadedFor: uid });
+    } catch { set({ profile: emptyProfile(), loadedFor: uid }); }
+  },
   setProfile: (patch: any) => set((s: any) => {
     const profile = { ...s.profile, ...patch };
-    try { localStorage.setItem(PROF_KEY, JSON.stringify(profile)); } catch {}
-    saveProfileToDB(profile);
+    const uid = useAuthStore.getState().session?.user?.id;
+    if (uid) { try { localStorage.setItem(profKey(uid), JSON.stringify(profile)); } catch {} saveProfileToDB(profile); }
     return { profile };
   }),
 }));
 
-/* ================= USAGE LIMITS (guest-aware) ================= */
+/* ================= USAGE ================= */
 export const LIMITS: Record<string, number> = { flash: 30, lite: 50, thinking: 10, deepthink: 1, coder: 10 };
-const FALLBACK: Record<string, string[]> = { flash: ["lite"], lite: ["flash"], thinking: ["flash", "lite"], deepthink: ["flash", "lite"], coder: ["flash", "lite"] };
-function readUsage(): Record<string, number> { try { return JSON.parse(localStorage.getItem("quix_usage_" + dayKey()) || "{}"); } catch { return {}; } }
-
-// guests: only Thinking allowed, capped at GUEST_THINKING_LIMIT; everything else blocked (limit 0)
+const FALLBACK: Record<string, string[]> = { flash: ["lite"], lite: ["flash"], thinking: ["flash", "lite"], deepthink: [], coder: ["flash", "lite"] };
+const usageKey = (uid: string | null) => "quix_usage_" + dayKey() + "_" + (uid || "guest");
+function readUsageFor(uid: string | null): Record<string, number> { try { return JSON.parse(localStorage.getItem(usageKey(uid)) || "{}"); } catch { return {}; } }
 function guestLimit(m: string): number { return m === "thinking" ? GUEST_THINKING_LIMIT : 0; }
 
 export const useUsageStore = create<any>((set, get) => ({
-  usage: readUsage(),
+  usage: readUsageFor(null),
+  user: null as string | null,
+  setUser: (uid: string | null) => set({ user: uid, usage: readUsageFor(uid) }),
   limitFor: (m: string) => { const sess = useAuthStore.getState().session; return sess ? (LIMITS[m] ?? 30) : guestLimit(m); },
-  remaining: (m: string) => Math.max(0, get().limitFor(m) - (get().usage[m] ?? 0)),
-  consume: (m: string) => { const base = readUsage(); const u = { ...base, [m]: (base[m] ?? 0) + 1 }; try { localStorage.setItem("quix_usage_" + dayKey(), JSON.stringify(u)); } catch {} set({ usage: u }); },
+  remaining: (m: string) => { const lim = get().limitFor(m); if (lim < 0) return Infinity; return Math.max(0, lim - (get().usage[m] ?? 0)); },
+  consume: (m: string) => { const uid = get().user; const base = readUsageFor(uid); const u = { ...base, [m]: (base[m] ?? 0) + 1 }; try { localStorage.setItem(usageKey(uid), JSON.stringify(u)); } catch {} set({ usage: u }); },
   resolve: (m: string) => {
     if (get().remaining(m) > 0) return m;
     const sess = useAuthStore.getState().session;
-    if (!sess) return null; // guests never fall back to other models
+    if (!sess) return null;
     for (const f of FALLBACK[m] || []) if (get().remaining(f) > 0) return f;
     return null;
   },
 }));
 
-/* ================= MEMORY (auto nightly sync, last 24h) ================= */
+/* ================= MEMORY ================= */
 export const useMemoryStore = create<any>((set, get) => ({
   memories: [], loadedFor: null,
+  reset: () => set({ memories: [], loadedFor: null }),
   loadFor: async (uid: string) => { if (get().loadedFor === uid) return; if (!sb) { set({ memories: [], loadedFor: uid }); return; } const { data } = await sb.from("memories").select("*").eq("user_id", uid).order("created_at", { ascending: true }); set({ memories: (data || []).map((r: any) => ({ id: r.id, text: r.text })), loadedFor: uid }); },
   addMemory: async (uid: string, text: string) => { const t = text.trim(); if (!t || !sb) return; const { data } = await sb.from("memories").insert({ user_id: uid, text: t, source: "manual" }).select().single(); if (data) set((s: any) => ({ memories: [...s.memories, { id: data.id, text: data.text }] })); },
   removeMemory: async (uid: string, id: string) => { if (!sb) return; await sb.from("memories").delete().eq("id", id); set((s: any) => ({ memories: s.memories.filter((m: any) => m.id !== id) })); },
   addAuto: async (uid: string, text: string) => { if (!sb) return; const { data } = await sb.from("memories").insert({ user_id: uid, text, source: "auto" }).select().single(); if (data) set((s: any) => ({ memories: [...s.memories, { id: data.id, text: data.text }] })); },
 }));
 
-// runs once per UTC day; summarizes the user's messages from the LAST 24 HOURS into memories.
-// v2 flag key invalidates old poisoned flags from buggy builds; only marks done on real success.
+function syncUserStores(uid: string | null) {
+  try { useProfileStore.getState().loadFor(uid); } catch {}
+  try { useUsageStore.getState().setUser(uid); } catch {}
+  try { useMemoryStore.getState().reset(); } catch {}
+}
+
 export async function runDailyMemorySync() {
   const session = useAuthStore.getState().session;
   if (!session?.user?.id || !sb) return;
@@ -172,7 +198,7 @@ export async function runDailyMemorySync() {
   } catch {}
 }
 
-/* ================= OBSERVATIONS (local only — observations table was DROPPED, never write to it) ================= */
+/* ================= OBSERVATIONS ================= */
 const OBS_LOCAL_KEY = "quix_observations";
 export function stripObs(t: string): string { const i = t.indexOf(OBS_TAG); return i >= 0 ? t.slice(0, i) : t; }
 export function extractObs(t: string): string { const i = t.indexOf(OBS_TAG); return i >= 0 ? t.slice(i + OBS_TAG.length).trim() : ""; }
@@ -183,35 +209,43 @@ export async function saveObservation(summary: string) {
   saveObservationLocal(s);
 }
 
-/* ================= HISTORY (Supabase only) ================= */
+/* ================= HISTORY ================= */
 export async function createChat(title: string): Promise<string | null> { if (!sb) return null; try { const { data, error } = await sb.from("chats").insert({ title }).select().single(); if (error) return null; return data.id; } catch { return null; } }
-export async function insertMessage(chatId: string, msg: ChatMessage) { if (!sb) return; try { await sb.from("messages").insert({ id: msg.id, chat_id: chatId, role: msg.role, model: msg.model, content: msg.content, status: "done", kind: "text" }); await sb.from("chats").update({ updated_at: new Date().toISOString() }).eq("id", chatId); } catch {} }
+export async function insertMessage(chatId: string, msg: ChatMessage) { if (!sb) return; const base = { id: msg.id, chat_id: chatId, role: msg.role, model: msg.model, content: msg.content, status: "done", kind: "text" }; const extra = { thoughts: msg.thoughts || null, sources: msg.sources && msg.sources.length ? msg.sources : null, think_time: msg.thinkTime != null ? msg.thinkTime : null }; try { await sb.from("messages").insert({ ...base, ...extra }); } catch { try { await sb.from("messages").insert(base); } catch {} } try { await sb.from("chats").update({ updated_at: new Date().toISOString() }).eq("id", chatId); } catch {} }
 export async function fetchChats(): Promise<any[]> { if (!sb) return []; try { const { data } = await sb.from("chats").select("*").order("updated_at", { ascending: false }).limit(50); return data || []; } catch { return []; } }
-export async function fetchMessages(chatId: string): Promise<ChatMessage[]> { if (!sb) return []; try { const { data } = await sb.from("messages").select("*").eq("chat_id", chatId).order("created_at", { ascending: true }); return (data || []).map((m: any) => ({ id: m.id, role: m.role, model: m.model, content: m.content, createdAt: new Date(m.created_at).getTime(), status: "done" })); } catch { return []; } }
+export async function fetchMessages(chatId: string): Promise<ChatMessage[]> { if (!sb) return []; try { const { data } = await sb.from("messages").select("*").eq("chat_id", chatId).order("created_at", { ascending: true }); return (data || []).map((m: any) => ({ id: m.id, role: m.role, model: m.model, content: m.content, thoughts: m.thoughts || undefined, sources: Array.isArray(m.sources) ? m.sources : undefined, thinkTime: m.think_time != null ? m.think_time : undefined, createdAt: new Date(m.created_at).getTime(), status: "done" })); } catch { return []; } }
 export async function renameChat(id: string, title: string) { if (!sb) return; try { await sb.from("chats").update({ title }).eq("id", id); } catch {} }
 export async function deleteChat(id: string) { if (!sb) return; try { await sb.from("chats").delete().eq("id", id); } catch {} }
 
 /* ================= GEMINI ================= */
-let controller: AbortController | null = null;
-export function abortGemini() { if (controller) controller.abort(); controller = null; }
+export function abortGemini() { window.dispatchEvent(new Event("quix-stop")); }
 export interface GeminiResult { text: string; thoughts: string; sources: SourceItem[] }
 
 export async function askGeminiStream(model: string, prompt: string, opts: { search?: boolean; nativeThoughts?: boolean; attachments?: any[] }, h: { onThoughts: (t: string) => void; onText: (t: string) => void; onDone: (r: GeminiResult) => void }): Promise<void> {
   const apiKey = apiKeyFor(model);
-  if (!apiKey) throw new Error(`NO API KEY FOR ${model.toUpperCase()}.`);
-  controller = new AbortController();
+  if (!apiKey) throw new Error(`${MODELS[model]?.name || model} has no API key configured.`);
+  const controller = new AbortController();
   const signal = controller.signal;
+  const onStop = () => controller.abort();
+  window.addEventListener("quix-stop", onStop, { once: true });
   const parts: any[] = [{ text: prompt }];
   (opts.attachments || []).forEach((a) => { if (a.kind === "text") parts.push({ text: `\n\n--- File: ${a.name} ---\n${a.text || ""}` }); else parts.push({ inline_data: { mime_type: a.mimeType, data: a.base64 } }); });
   const body: any = { contents: [{ parts }] };
-  if (opts.search) body.tools = [{ google_search: {} }];
+  
+  // Only enable web search for deepthink, not thinking
+  const enableSearch = opts.search && model === "deepthink";
+  if (enableSearch) body.tools = [{ google_search: {} }];
   if (opts.nativeThoughts) body.generationConfig = { thinkingConfig: { includeThoughts: true } };
+  
   try {
     let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
-    if (!res.ok && opts.search) { res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }] }), signal }); }
-    if (!res.ok || !res.body) { const d = await res.json().catch(() => null); throw new Error(d?.error?.message || "Gemini request failed"); }
+    if (!res.ok && enableSearch) { res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }] }), signal }); }
+    if (!res.ok || !res.body) { const d = await res.json().catch(() => null); throw new Error(d?.error?.message || `${MODELS[model]?.name || model} request failed`); }
     const reader = res.body.getReader(); const dec = new TextDecoder();
-    let buf = "", text = "", thoughts = ""; const sources: SourceItem[] = []; const seen = new Set<string>();
+    let buf = "", text = "", thoughts = "";
+    const sources: SourceItem[] = []; const seen = new Set<string>();
+    let inThinking = false;
+
     while (true) {
       const { done, value } = await reader.read(); if (done) break;
       buf += dec.decode(value, { stream: true });
@@ -222,15 +256,270 @@ export async function askGeminiStream(model: string, prompt: string, opts: { sea
         try {
           const json = JSON.parse(payload);
           (json?.candidates?.[0]?.groundingMetadata?.groundingChunks || []).forEach((c: any) => { const uri = c?.web?.uri; if (uri && !seen.has(uri)) { seen.add(uri); sources.push({ title: c?.web?.title || uri, uri }); } });
-          let td = "", xd = "";
-          (json?.candidates?.[0]?.content?.parts || []).forEach((p: any) => { if (p?.thought) xd += p?.text || ""; else td += p?.text || ""; });
-          if (xd) { thoughts += xd; h.onThoughts(thoughts); }
-          if (td) { text += td; h.onText(text); }
+
+          let textChunk = "";
+          let thoughtChunk = "";
+          (json?.candidates?.[0]?.content?.parts || []).forEach((p: any) => {
+            if (p?.thought) { thoughtChunk += p?.text || ""; }
+            else { textChunk += p?.text || ""; }
+          });
+
+          if (thoughtChunk) {
+            thoughts += thoughtChunk;
+            h.onThoughts(thoughts);
+          }
+
+          if (textChunk) {
+            let remaining = textChunk;
+            while (remaining.length > 0) {
+              const openIdx = remaining.indexOf("<thinking>");
+              const closeIdx = remaining.indexOf("</thinking>");
+              if (inThinking) {
+                if (closeIdx !== -1 && (openIdx === -1 || closeIdx < openIdx)) {
+                  const part = remaining.slice(0, closeIdx);
+                  thoughts += part; h.onThoughts(thoughts);
+                  remaining = remaining.slice(closeIdx + 11);
+                  inThinking = false;
+                } else if (openIdx !== -1) {
+                  const part = remaining.slice(0, openIdx);
+                  thoughts += part; h.onThoughts(thoughts);
+                  remaining = remaining.slice(openIdx + 10);
+                } else {
+                  thoughts += remaining; h.onThoughts(thoughts);
+                  remaining = "";
+                }
+              } else {
+                if (openIdx !== -1 && (closeIdx === -1 || openIdx < closeIdx)) {
+                  const part = remaining.slice(0, openIdx);
+                  text += part; if (part) h.onText(text);
+                  remaining = remaining.slice(openIdx + 10);
+                  inThinking = true;
+                } else if (closeIdx !== -1) {
+                  const part = remaining.slice(0, closeIdx);
+                  text += part; if (part) h.onText(text);
+                  remaining = remaining.slice(closeIdx + 11);
+                } else {
+                  text += remaining; if (remaining) h.onText(text);
+                  remaining = "";
+                }
+              }
+            }
+          }
         } catch {}
       }
     }
     h.onDone({ text, thoughts, sources });
-  } finally { controller = null; }
+  } finally { window.removeEventListener("quix-stop", onStop); }
+}
+
+/* ================= TAVILY SEARCH ================= */
+export interface TavilyResult { title: string; url: string; content: string }
+
+function mapTavily(d: any): TavilyResult[] {
+  return (d?.results || []).map((r: any) => ({ title: r.title || r.url, url: r.url, content: String(r.content || "").slice(0, 1500) }));
+}
+
+export async function tavilySearch(query: string, controller?: AbortController): Promise<TavilyResult[]> {
+  const key = env().VITE_TAVILY_API_KEY || "";
+  if (!key) throw new Error("NO TAVILY API KEY (add VITE_TAVILY_API_KEY in Vercel).");
+  const bodyBase = { query, search_depth: "advanced", max_results: 10 };
+  const signal = controller?.signal;
+  try {
+    let res = await fetch("https://api.tavily.com/search", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${key}` }, body: JSON.stringify(bodyBase), signal });
+    if (res.status === 401 || res.status === 403) {
+      res = await fetch("https://api.tavily.com/search", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...bodyBase, api_key: key }), signal });
+    }
+    if (!res.ok) throw new Error("Tavily " + res.status);
+    return mapTavily(await res.json());
+  } catch (e: any) {
+    if (e?.name === "AbortError") throw e;
+    const res = await fetch("/api/tavily", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query, max_results: 10 }), signal });
+    if (!res.ok) throw new Error("Search failed (" + res.status + ")");
+    return mapTavily(await res.json());
+  }
+}
+
+/* ================= DEEPTHINK AGENT ================= */
+const SEARCH_RE = /\[\[SEARCH:?\s*([^\]\n]+?)\s*\]\]/i;
+function fmtTime(sec: number): string { const m = Math.floor(sec / 60); const s = sec % 60; return `${m}:${s < 10 ? "0" : ""}${s}`; }
+
+function cleanForLog(t: string): string {
+  return t.replace(/\[\[SEARCH:?[^\]\n]*\]\]/gi, "").replace(/<\/?thinking>/gi, "").split("\n").map((l) => l.trim()).filter((l) => l.length > 2 && l !== "•" && l !== "-" && l !== "*").join("\n");
+}
+
+const DEEPEN_STEPS = [
+  "SYNTHESIS PASS: From everything found so far, draft a structured outline of the final answer (headings, key points, and which source numbers support them).",
+  "CRITIQUE PASS: Attack your own outline. List weaknesses, missing angles, counter-arguments and unanswered sub-questions.",
+  "ENHANCE PASS: Strengthen the draft — add concrete numbers, real examples, tricks, and actionable steps that resolve the critique.",
+  "QUALITY PASS: Final polish plan — cut fluff, rank the strongest insights first, flag anything unverified.",
+];
+
+async function geminiTurnStream(keys: string[], contents: any[], onText: (t: string) => void, controller: AbortController, onCooldown?: (sec: number) => Promise<void>, shouldStop?: () => boolean): Promise<string> {
+  const signal = controller.signal;
+  let rlStreak = 0;
+  for (let attempt = 0; ; attempt++) {
+    if (shouldStop && shouldStop()) throw new DOMException("Aborted", "AbortError");
+    const apiKey = keys[attempt % keys.length];
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents }), signal });
+    if (res.status === 429 || res.status === 503) {
+      rlStreak++;
+      if (attempt > 14) throw new Error("Model is busy right now.");
+      if (rlStreak < keys.length) { continue; }
+      const waitSec = Math.min(15 + rlStreak * 5, 45);
+      if (onCooldown) { await onCooldown(waitSec); } else { await sleep(waitSec * 1000); }
+      rlStreak = 0;
+      continue;
+    }
+    rlStreak = 0;
+    if (!res.ok || !res.body) { const d = await res.json().catch(() => null); throw new Error(d?.error?.message || "Model request failed"); }
+    const reader = res.body.getReader(); const dec = new TextDecoder();
+    let buf = "", text = "";
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break;
+      buf += dec.decode(value, { stream: true });
+      const lines = buf.split("\n"); buf = lines.pop() || "";
+      for (const line of lines) {
+        const t = line.trim(); if (!t.startsWith("data:")) continue;
+        const payload = t.slice(5).trim(); if (!payload) continue;
+        try {
+          const json = JSON.parse(payload);
+          (json?.candidates?.[0]?.content?.parts || []).forEach((p: any) => { if (!p?.thought && p?.text) { text += p.text; onText(text); } });
+        } catch {}
+      }
+    }
+    return text;
+  }
+}
+
+function buildDeepThinkSystem(question: string, history: ChatMessage[]): string {
+  const blocks: string[] = [];
+  blocks.push("# DeepThink — Autonomous Research Agent\nYou are DeepThink, Quix's deep research mode. You autonomously research the live web for several minutes, then deliver one comprehensive, expert-level answer.");
+  blocks.push("## SEARCH TOOL\nWhen you need live information, output a line EXACTLY like this and STOP right after it:\n[[SEARCH: your precise query]]\nThe system runs the search and returns GLOBALLY numbered results ([1], [2], [3]... across all searches). Never invent results.");
+  blocks.push("## THINK-SEARCH-THINK RHYTHM (CRITICAL)\n- NEVER chain searches back-to-back. After EVERY search you MUST write 3-6 analysis bullets about what you actually learned BEFORE choosing the next query.\n- NEVER pre-plan all queries. Each next query must be chosen from what you JUST learned.\n- NEVER repeat or lightly paraphrase an earlier query.\n- NEVER draft the final answer before the system tells you the research phase is over.\n- Cite sources in the final answer with their global numbers like [4] or [4,7].\n- You MUST run at least " + DEEPTHINK_MIN_SEARCHES + " searches and MAY run up to " + DEEPTHINK_MAX_SEARCHES + ".\n- FIRST output a short plan as bullets (• ) listing 4-8 sub-questions.\n- Cross-check important claims across multiple sources.");
+  blocks.push("## FINAL ANSWER\nOnly when the system tells you the research phase is over, write the final answer in clean markdown WITHOUT any [[SEARCH:]] line. Cite sources inline with their global numbers like [1]. Make it thorough, practical, well-structured. Do NOT mention passes, timers or the system.");
+  blocks.push("# Global Knowledge\n" + globalKnowledge);
+  blocks.push("# Global Instructions\n" + globalInstructions);
+  blocks.push("# DeepThink Instructions\n" + deepthinkMd);
+  const sess = useAuthStore.getState().session;
+  if (sess?.user) { const meta = (sess.user.user_metadata || {}) as any; const name = meta.full_name || meta.name || ""; blocks.push(`--- User identity ---\n${name ? `Name: ${name}\n` : ""}${sess.user.email ? `Email: ${sess.user.email}\n` : ""}Use it naturally.`); }
+  const uid = sess?.user?.id;
+  if (uid) { const ms = useMemoryStore.getState(); if (ms.loadedFor !== uid) ms.loadFor(uid); const mems = useMemoryStore.getState().memories; if (mems.length) blocks.push("--- Memories about this user ---\n" + mems.map((m: any) => `• ${m.text}`).join("\n")); }
+  const hist = history.slice(-6).map((m) => `${m.role === "user" ? "User" : "Quix"}: ${stripObs(m.content)}`).join("\n");
+  if (hist) blocks.push(`--- Conversation so far ---\n${hist}`);
+  blocks.push(`--- USER'S RESEARCH QUESTION ---\n${question}`);
+  blocks.push("Begin. Plan, then think-search-think until told to answer.");
+  return blocks.join("\n\n");
+}
+
+export async function runDeepThink(question: string, history: ChatMessage[], h: { onThoughts: (t: string) => void; onSources: (s: SourceItem[]) => void; onDone: (r: GeminiResult) => void }): Promise<void> {
+  const keys = deepthinkKeys();
+  if (!keys.length) throw new Error(`${MODELS.deepthink.name} has no API key configured.`);
+  const controller = new AbortController();
+  const started = Date.now();
+  const sources: SourceItem[] = [];
+  let searchCount = 0;
+  let nudges = 0;
+  let log = "";
+  let finalText = "";
+  let stopped = false;
+  let finalRequested = false;
+  const onStop = () => { stopped = true; controller.abort(); };
+  window.addEventListener("quix-stop", onStop, { once: true });
+  const cool = (sec: number) => new Promise<void>((resolve) => {
+    let remaining = sec;
+    log += `• Cooling down... ${remaining}s\n`;
+    h.onThoughts(log);
+    const iv = setInterval(() => {
+      if (stopped) { clearInterval(iv); resolve(); return; }
+      remaining--;
+      if (remaining <= 0) {
+        clearInterval(iv);
+        log = log.replace(/• Cooling down\.{3} \d+s\n$/, "• Cooldown over — resuming research...\n");
+        h.onThoughts(log);
+        resolve();
+      } else {
+        log = log.replace(/• Cooling down\.{3} \d+s\n$/, `• Cooling down... ${remaining}s\n`);
+        h.onThoughts(log);
+      }
+    }, 1000);
+  });
+  const chk = () => stopped;
+  const contents: any[] = [{ role: "user", parts: [{ text: buildDeepThinkSystem(question, history) }] }];
+  try {
+    while (true) {
+      if (stopped) { finalText = finalText || "Research stopped."; break; }
+      const elapsedMs = Date.now() - started;
+      const overTime = elapsedMs > DEEPTHINK_MAX_MS;
+      const underMin = elapsedMs < DEEPTHINK_MIN_MS;
+      const turn = await geminiTurnStream(keys, contents, (t) => h.onThoughts(log + t), controller, cool, chk);
+      if (stopped) { finalText = finalText || "Research stopped."; break; }
+      const m = turn.match(SEARCH_RE);
+      const turnClean = cleanForLog(turn);
+
+      if (m && searchCount < DEEPTHINK_MAX_SEARCHES && !overTime && !finalRequested) {
+        const query = m[1].trim();
+        const before = cleanForLog(turn.slice(0, m.index));
+        searchCount++;
+        log += (before ? before + "\n" : "") + `• Searching web (${searchCount}/${DEEPTHINK_MAX_SEARCHES}): "${query}"...\n`;
+        h.onThoughts(log);
+        contents.push({ role: "model", parts: [{ text: turn }] });
+        try {
+          const results = await tavilySearch(query, controller);
+          if (stopped) { finalText = finalText || "Research stopped."; break; }
+          const linesOut: string[] = [];
+          results.forEach((r) => {
+            const existingIdx = sources.findIndex((s) => s.uri === r.url);
+            let num: number;
+            if (existingIdx > -1) { num = existingIdx + 1; } else { sources.push({ title: r.title, uri: r.url, desc: r.content.slice(0, 180) }); num = sources.length; }
+            linesOut.push(`[${num}] ${r.title}\n${r.url}\n${r.content}`);
+          });
+          h.onSources([...sources]);
+          const block = linesOut.join("\n\n");
+          contents.push({ role: "user", parts: [{ text: `SEARCH RESULTS for "${query}":\n${block || "(no results)"}\n\nNow ANALYZE what you just learned in 3-6 bullets (key facts, numbers, contradictions, gaps). Then choose the single most valuable NEXT query from these findings and output exactly one [[SEARCH: query]] line. Do NOT repeat an earlier query. Do NOT draft the final answer.` }] });
+        } catch (e: any) {
+          if (e?.name === "AbortError" || stopped) { finalText = finalText || "Research stopped."; break; }
+          contents.push({ role: "user", parts: [{ text: `Search failed (${e?.message || "error"}). Continue with what you know or try another query.` }] });
+        }
+        for (let s = 0; s < 10; s++) { if (stopped) break; await sleep(1000); }
+        continue;
+      }
+
+      if (underMin && !overTime && nudges < 60 && !finalRequested) {
+        const stepIdx = nudges % DEEPEN_STEPS.length;
+        nudges++;
+        if (turnClean) log += turnClean + "\n";
+        const elapsedSec = Math.round(elapsedMs / 1000);
+        log += `• ${fmtTime(elapsedSec)} — deepening pass ${nudges} (${searchCount} searches, ${sources.length} sources)...\n`;
+        h.onThoughts(log);
+        const canSearch = searchCount < DEEPTHINK_MAX_SEARCHES;
+        contents.push({ role: "model", parts: [{ text: turn }] });
+        contents.push({ role: "user", parts: [{ text: `NOT ENOUGH RESEARCH TIME YET — ${elapsedSec}s of ${Math.round(DEEPTHINK_MIN_MS / 1000)}s minimum. Do NOT write the final answer yet. ${canSearch ? "In 2-3 bullets, identify what is still missing or unverified, then output a [[SEARCH: query]] line for a completely new angle. " : DEEPEN_STEPS[stepIdx]}` }] });
+        for (let s = 0; s < 15; s++) { if (stopped) break; await sleep(1000); }
+        continue;
+      }
+
+      if (m || (!finalRequested && !underMin)) {
+        if (turnClean) log += turnClean + "\n";
+        finalRequested = true;
+        log += "• Research complete — writing final answer...\n";
+        h.onThoughts(log);
+        contents.push({ role: "model", parts: [{ text: turn }] });
+        contents.push({ role: "user", parts: [{ text: "The research phase is OVER. Write the final comprehensive answer NOW in clean markdown. Deliver the actual answer to the user's question with inline citations using the global source numbers like [1] or [4,7]. Do NOT mention passes, timers or the system." }] });
+        const fin = await geminiTurnStream(keys, contents, (t) => h.onThoughts(log + t), controller, cool, chk);
+        finalText = fin.replace(SEARCH_RE, "");
+        break;
+      }
+
+      finalText = turn.replace(SEARCH_RE, "");
+      break;
+    }
+  } catch (e: any) {
+    if (!finalText) finalText = (stopped || e?.name === "AbortError") ? "Research stopped." : `${MODELS.deepthink.name} hit a temporary roadblock. Try again in a minute.`;
+  } finally {
+    window.removeEventListener("quix-stop", onStop);
+  }
+  h.onThoughts(log);
+  h.onDone({ text: finalText || "Research complete.", thoughts: log, sources });
 }
 
 /* ================= PROMPT ================= */
