@@ -31,23 +31,24 @@ export function MessageList() {
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
-    const container = c.firstElementChild as HTMLElement;
-    if (!container) return;
     
-    // Find the last user message
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
     
-    // Only scroll if we haven't scrolled to this specific user message yet
     if (lastUser && !scrolledUserIds.current.has(lastUser.id)) {
       scrolledUserIds.current.add(lastUser.id);
       requestAnimationFrame(() => {
-        const el = container.querySelector(`[data-mid="${lastUser.id}"]`) as HTMLElement;
+        const el = c.querySelector(`[data-mid="${lastUser.id}"]`) as HTMLElement;
         if (!el) return;
+        
+        const cRect = c.getBoundingClientRect();
+        const elRect = el.getBoundingClientRect();
         const header = document.querySelector('#chat-header') as HTMLElement;
-        const headerH = header ? header.offsetHeight : 0;
-        const elTop = el.offsetTop;
-        const desired = elTop - headerH - 8;
-        c.scrollTo({ top: Math.max(0, desired), behavior: "smooth" });
+        const headerRect = header ? header.getBoundingClientRect() : { top: 0, height: 0 };
+        
+        const elTopInContainer = elRect.top - cRect.top + c.scrollTop;
+        const desiredScroll = elTopInContainer - headerRect.height - 8;
+        
+        c.scrollTo({ top: Math.max(0, desiredScroll), behavior: "smooth" });
       });
     }
   }, [messages]);
