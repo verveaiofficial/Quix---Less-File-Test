@@ -231,12 +231,11 @@ export async function askGeminiStream(model: string, prompt: string, opts: { sea
   const parts: any[] = [{ text: prompt }];
   (opts.attachments || []).forEach((a) => { if (a.kind === "text") parts.push({ text: `\n\n--- File: ${a.name} ---\n${a.text || ""}` }); else parts.push({ inline_data: { mime_type: a.mimeType, data: a.base64 } }); });
   const body: any = { contents: [{ parts }] };
-  
-  // Only enable web search for deepthink, not thinking
+
   const enableSearch = opts.search && model === "deepthink";
   if (enableSearch) body.tools = [{ google_search: {} }];
   if (opts.nativeThoughts) body.generationConfig = { thinkingConfig: { includeThoughts: true } };
-  
+
   try {
     let res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), signal });
     if (!res.ok && enableSearch) { res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:streamGenerateContent?alt=sse&key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contents: [{ parts }] }), signal }); }
@@ -404,7 +403,7 @@ function buildDeepThinkSystem(question: string, history: ChatMessage[]): string 
   if (sess?.user) { const meta = (sess.user.user_metadata || {}) as any; const name = meta.full_name || meta.name || ""; blocks.push(`--- User identity ---\n${name ? `Name: ${name}\n` : ""}${sess.user.email ? `Email: ${sess.user.email}\n` : ""}Use it naturally.`); }
   const uid = sess?.user?.id;
   if (uid) { const ms = useMemoryStore.getState(); if (ms.loadedFor !== uid) ms.loadFor(uid); const mems = useMemoryStore.getState().memories; if (mems.length) blocks.push("--- Memories about this user ---\n" + mems.map((m: any) => `• ${m.text}`).join("\n")); }
-  const hist = history.slice(-6).map((m) => `${m.role === "user" ? "User" : "Quix"}: ${stripObs(m.content)}`).join("\n");
+  const hist = history.map((m) => `${m.role === "user" ? "User" : "Quix"}: ${stripObs(m.content)}`).join("\n");
   if (hist) blocks.push(`--- Conversation so far ---\n${hist}`);
   blocks.push(`--- USER'S RESEARCH QUESTION ---\n${question}`);
   blocks.push("Begin. Plan, then think-search-think until told to answer.");
@@ -530,7 +529,7 @@ export function buildPrompt(model: string, text: string, history: ChatMessage[])
   if (sess?.user) { const meta = (sess.user.user_metadata || {}) as any; const name = meta.full_name || meta.name || ""; blocks.push(`--- User identity (from account) ---\n${name ? `Name: ${name}\n` : ""}${sess.user.email ? `Email: ${sess.user.email}\n` : ""}Use it naturally (greet by name when appropriate).`); }
   const uid = sess?.user?.id;
   if (uid) { const ms = useMemoryStore.getState(); if (ms.loadedFor !== uid) ms.loadFor(uid); const mems = useMemoryStore.getState().memories; if (mems.length) blocks.push("--- Memories about this user (always remember) ---\n" + mems.map((m: any) => `• ${m.text}`).join("\n")); }
-  const hist = history.slice(-10).map((m) => `${m.role === "user" ? "User" : "Quix"}: ${stripObs(m.content)}`).join("\n");
+  const hist = history.map((m) => `${m.role === "user" ? "User" : "Quix"}: ${stripObs(m.content)}`).join("\n");
   if (hist) blocks.push(`--- Conversation so far ---\n${hist}`);
   blocks.push(`--- User message ---\n${text}`);
   blocks.push(`--- Internal (do NOT mention or quote this instruction anywhere in your visible reply or reasoning) ---\nSilently append ONE final line starting with ${OBS_TAG} containing a 1-2 sentence factual observation of what you learned about the user this turn (intent, preferences, mood, facts). Keep it concise.`);
