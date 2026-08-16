@@ -30,26 +30,23 @@ export function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }:
   const [expanded, setExpanded] = useState(true);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   const [caughtUp, setCaughtUp] = useState(false);
-  
+
   const fullThoughts = thoughts || "";
-  const shownThoughts = useStreamText(fullThoughts, !caughtUp, 20, 3);
-  
+  // Fast enough to stay live with the server (no lag), but still smooth
+  const shownThoughts = useStreamText(fullThoughts, !caughtUp, 15, 4);
+
   useEffect(() => { if (done) return; const t = setInterval(() => setElapsed((p) => p + 1), 1000); return () => clearInterval(t); }, [done]);
-  
-  // Keep streaming until we've caught up to the full thoughts
+
+  // Mark caught up the moment the typewriter reaches the full thoughts
   useEffect(() => {
-    if (done && !caughtUp && shownThoughts.length >= fullThoughts.length) {
-      setCaughtUp(true);
-    }
-  }, [done, caughtUp, shownThoughts.length, fullThoughts.length]);
-  
-  // Only collapse after fully caught up
+    if (!caughtUp && shownThoughts.length >= fullThoughts.length) setCaughtUp(true);
+  }, [caughtUp, shownThoughts.length, fullThoughts.length]);
+
+  // Only collapse after thinking ended AND everything is shown
   useEffect(() => {
-    if (caughtUp && finished) {
-      setExpanded(false);
-    }
-  }, [caughtUp, finished]);
-  
+    if (done && caughtUp) setExpanded(false);
+  }, [done, caughtUp]);
+
   const finalTime = thinkTime != null ? thinkTime : elapsed;
   const thoughtParas = shownThoughts.split(/\n+/).map((t) => t.trim()).filter(Boolean);
   const found = sources?.length ?? 0;
