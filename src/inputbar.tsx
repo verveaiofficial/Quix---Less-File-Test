@@ -29,10 +29,10 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const committedRef = useRef<string[]>([]);
   const finishTimeoutRef = useRef<any>(null);
   const spinDir = useRef(1);
-  const settleUntil = useRef(0);
   const lastKb = useRef(0);
   const offsetRef = useRef(0);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const alignRaf = useRef(0);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
@@ -42,54 +42,64 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const isGuest = !session;
   const isCoarse = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 
-  // clamp so the bar can NEVER cover the header, even with a stale saved kb height
-  const applyOffset = (v: number) => {
-    const header = document.querySelector("#chat-header") as HTMLElement | null;
-    const hb = header ? header.getBoundingClientRect().bottom : 64;
-    const barH = wrapRef.current ? wrapRef.current.offsetHeight : 130;
-    const max = Math.max(0, window.innerHeight - hb - barH - 8);
-    const val = Math.max(0, Math.min(v, max));
-    offsetRef.current = val;
-    setBottomOffset(val);
+  // measure, don't calculate: glue the bar's bottom edge to the keyboard's top edge
+  const alignToKeyboard = () => {
+    cancelAnimationFrame(alignRaf.current);
+    alignRaf.current = requestAnimationFrame(() => {
+      const w = wrapRef.current;
+      if (!w || !window.visualViewport) return;
+      const vv = window.visualViewport;
+      const kbTop = vv.offsetTop + vv.height;
+      const wr = w.getBoundingClientRect();
+      const delta = wr.bottom - kbTop;
+      if (Math.abs(delta) < 3) {
+        if (window.innerHeight - vv.height > 80 && offsetRef.current > 50) {
+          lastKb.current = offsetRef.current;
+          try { localStorage.setItem("quix_kb_h", String(offsetRef.current)); } catch {}
+        }
+        return;
+      }
+      const next = Math.max(0, offsetRef.current + delta);
+      offsetRef.current = next;
+      setBottomOffset(next);
+    });
   };
-  const applyRef = useRef(applyOffset);
-  applyRef.current = applyOffset;
+  const alignRef = useRef(alignToKeyboard);
+  alignRef.current = alignToKeyboard;
 
   useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
   useEffect(() => {
     try { lastKb.current = parseInt(localStorage.getItem("quix_kb_h") || "0", 10) || 0; } catch {}
-    const readKb = () => Math.max(0, window.innerHeight - window.visualViewport!.height - window.visualViewport!.offsetTop);
-    const r = () => {
-      if (!window.visualViewport) return;
-      if (Date.now() < settleUntil.current) return;
-      const kb = readKb();
-      // keyboard started closing -> drop the bar NOW, before the keyboard hides
-      if (kb < offsetRef.current - 40) { applyRef.current(0); return; }
-      if (kb > 50) { lastKb.current = kb; try { localStorage.setItem("quix_kb_h", String(kb)); } catch {} }
-      applyRef.current(kb);
+    const onVv = () => alignRef.current();
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener("resize", onVv);
+      window.visualViewport.addEventListener("scroll", onVv);
+    }
+    return () => {
+      if (window.visualViewport) {
+        window.visualViewport.removeEventListener("resize", onVv);
+        window.visualViewport.removeEventListener("scroll", onVv);
+      }
+      cancelAnimationFrame(alignRaf.current);
     };
-    if (window.visualViewport) window.visualViewport.addEventListener("resize", r);
-    return () => { if (window.visualViewport) window.visualViewport.removeEventListener("resize", r); };
   }, []);
   useEffect(() => { return () => { listeningRef.current = false; try { recRef.current?.stop(); } catch {} if (finishTimeoutRef.current) clearTimeout(finishTimeoutRef.current); }; }, []);
 
   const prevent = (e: any) => e.preventDefault();
 
   const onFocused = () => {
-    if (!isCoarse || !window.visualViewport) return;
+    if (!isCoarse) return;
     const predict = lastKb.current || Math.round(window.innerHeight * 0.42);
-    settleUntil.current = Date.now() + 420;
-    applyOffset(predict);
-    setTimeout(() => {
-      if (document.activeElement !== taRef.current || !window.visualViewport) return;
-      const kb = Math.max(0, window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop);
-      if (kb > 50) { lastKb.current = kb; try { localStorage.setItem("quix_kb_h", String(kb)); } catch {} applyOffset(kb); }
-    }, 460);
+    offsetRef.current = predict;
+    setBottomOffset(predict);
+    setTimeout(() => alignRef.current(), 60);
+    setTimeout(() => alignRef.current(), 250);
+    setTimeout(() => alignRef.current(), 500);
   };
   const onBlurred = () => {
     if (!menuOpen) {
-      settleUntil.current = Date.now() + 420;
-      applyOffset(0);
+      offsetRef.current = 0;
+      setBottomOffset(0);
     }
   };
 
