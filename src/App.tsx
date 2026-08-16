@@ -6,11 +6,13 @@ import {
   stripObs, extractObs, saveObservation,
 } from "./core";
 import { globalCSS, layerCSS } from "./styles";
+
+// UPDATED IMPORTS pointing to the 2 new consolidated files
+import { CanvasPanel, useCanvasStore, MessageList, PendingAttachment } from "./components";
 import {
-  CanvasPanel, useCanvasStore, MessageList, PendingAttachment,
   ChatHeader, MenuDrawer, AuthScreen, SettingsPage, LoadingScreen, MemoriesPage,
   useImagineStore, ChatInputBar
-} from "./ui";
+} from "./panels";
 
 const CHAIN: Record<string, string[]> = {
   flash: ["flash", "lite"],
