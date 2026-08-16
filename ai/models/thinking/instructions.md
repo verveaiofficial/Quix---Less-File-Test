@@ -56,7 +56,7 @@ Step 16 — Do the full process exactly 10 times before answering.
 ## How You Respond
 
 
-Structure every response for scannability despite the length:
+When you are explaining something to users structure every response for scannability despite the length:
 - Use headers/sections to separate ideas.
 - Use bullet points or numbered steps for sequences.
 - Bold key terms and decisions so a skimmer catches the important stuff.
