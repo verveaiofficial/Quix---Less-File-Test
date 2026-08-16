@@ -6,8 +6,8 @@ import { PendingAttachment, readFileAsAttachment } from "./ui";
 
 const WAVE_BARS = 24;
 
-// animated, but faster than the phone keyboard so the bar always leads
-const ibFastCSS = `.input-wrapper{transition:bottom .14s cubic-bezier(.22,.9,.32,1) !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
+// no easing, no delay: the bar is glued to the keyboard edge frame-by-frame
+const ibFastCSS = `.input-wrapper{transition:none !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
 
 export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
   const { activeModel, setActiveModel, isSending } = useChatStore();
@@ -30,12 +30,9 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const committedRef = useRef<string[]>([]);
   const finishTimeoutRef = useRef<any>(null);
   const spinDir = useRef(1);
-  const lastKb = useRef(0);
   const offsetRef = useRef(0);
-  const openUntil = useRef(0);
-  const closeUntil = useRef(0);
+  const trackRaf = useRef(0);
   const wrapRef = useRef<HTMLDivElement>(null);
-  const alignRaf = useRef(0);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
@@ -43,74 +40,49 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const fileCount = extractFiles(messages).length;
   const session = useAuthStore((s) => s.session);
   const isGuest = !session;
-  const isCoarse = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 
-  const jumpTo = (v: number) => { offsetRef.current = v; setBottomOffset(v); };
-
-  const alignToKeyboard = () => {
-    cancelAnimationFrame(alignRaf.current);
-    alignRaf.current = requestAnimationFrame(() => {
-      const w = wrapRef.current;
-      if (!w || !window.visualViewport) return;
-      const now = Date.now();
-      if (now < openUntil.current || now < closeUntil.current) return;
-      const vv = window.visualViewport;
-      const kbOpen = window.innerHeight - vv.height > 80;
-      const kbTop = vv.offsetTop + vv.height;
-      const wr = w.getBoundingClientRect();
-      const delta = wr.bottom - kbTop;
-      // keyboard closing -> drop now, ahead of it
-      if (delta < -40 && offsetRef.current > 40) { closeUntil.current = now + 500; jumpTo(0); return; }
-      // keyboard opened without our focus hook -> jump up ahead of it
-      if (kbOpen && delta > 40) { openUntil.current = now + 450; jumpTo(offsetRef.current + delta); return; }
-      if (Math.abs(delta) < 3) {
-        if (kbOpen && offsetRef.current > 50) { lastKb.current = offsetRef.current; try { localStorage.setItem("quix_kb_h", String(offsetRef.current)); } catch {} }
-        return;
-      }
-      // tiny smooth correction
-      jumpTo(Math.max(0, offsetRef.current + delta));
-    });
-  };
-  const alignRef = useRef(alignToKeyboard);
-  alignRef.current = alignToKeyboard;
-
-  useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
+  // 1:1 keyboard tracking: measure the gap between the bar's bottom edge and the
+  // keyboard's top edge, close the gap exactly, every frame. no prediction, no easing.
   useEffect(() => {
-    try { lastKb.current = parseInt(localStorage.getItem("quix_kb_h") || "0", 10) || 0; } catch {}
-    const onVv = () => alignRef.current();
+    const track = () => {
+      cancelAnimationFrame(trackRaf.current);
+      trackRaf.current = requestAnimationFrame(() => {
+        const w = wrapRef.current;
+        if (!w || !window.visualViewport) return;
+        const vv = window.visualViewport;
+        const kbSize = window.innerHeight - vv.height;
+        // ignore url-bar show/hide and other tiny viewport changes
+        if (kbSize < 120 && offsetRef.current === 0) return;
+        const kbTop = vv.offsetTop + vv.height;
+        const wr = w.getBoundingClientRect();
+        const delta = wr.bottom - kbTop;
+        if (kbSize < 120) {
+          if (offsetRef.current !== 0) { offsetRef.current = 0; setBottomOffset(0); }
+          return;
+        }
+        if (Math.abs(delta) < 1) return;
+        const next = Math.max(0, offsetRef.current + delta);
+        offsetRef.current = next;
+        setBottomOffset(next);
+      });
+    };
     if (window.visualViewport) {
-      window.visualViewport.addEventListener("resize", onVv);
-      window.visualViewport.addEventListener("scroll", onVv);
+      window.visualViewport.addEventListener("resize", track);
+      window.visualViewport.addEventListener("scroll", track);
     }
     return () => {
       if (window.visualViewport) {
-        window.visualViewport.removeEventListener("resize", onVv);
-        window.visualViewport.removeEventListener("scroll", onVv);
+        window.visualViewport.removeEventListener("resize", track);
+        window.visualViewport.removeEventListener("scroll", track);
       }
-      cancelAnimationFrame(alignRaf.current);
+      cancelAnimationFrame(trackRaf.current);
     };
   }, []);
+
+  useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
   useEffect(() => { return () => { listeningRef.current = false; try { recRef.current?.stop(); } catch {} if (finishTimeoutRef.current) clearTimeout(finishTimeoutRef.current); }; }, []);
 
   const prevent = (e: any) => e.preventDefault();
-
-  const onFocused = () => {
-    if (!isCoarse) return;
-    const now = Date.now();
-    openUntil.current = now + 450;
-    closeUntil.current = 0;
-    // animate up fast to the remembered keyboard height (leads the keyboard)
-    jumpTo(lastKb.current || Math.min(560, Math.max(220, Math.round(window.innerHeight * 0.42))));
-    setTimeout(() => alignRef.current(), 500);
-    setTimeout(() => alignRef.current(), 800);
-  };
-  const onBlurred = () => {
-    if (!menuOpen) {
-      openUntil.current = 0;
-      closeUntil.current = Date.now() + 500;
-      jumpTo(0);
-    }
-  };
 
   const resetVoiceRefs = () => { sessionTextRef.current = ""; interimTailRef.current = ""; committedRef.current = []; };
 
@@ -235,7 +207,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
               {Array.from({ length: WAVE_BARS }).map((_, i) => (<span key={i} style={{ animationDelay: `${(i % 8) * 0.09}s` }} />))}
             </div>
           ) : (
-            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research..." : "Ask Quix..."} rows={1} value={inputValue} onFocus={onFocused} onBlur={onBlurred} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} />
+            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research..." : "Ask Quix..."} rows={1} value={inputValue} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} />
           )}
           <div className="action-row">
             <div className="action-left">
