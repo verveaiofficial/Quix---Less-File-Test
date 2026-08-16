@@ -6,6 +6,9 @@ import { PendingAttachment, readFileAsAttachment } from "./ui";
 
 const WAVE_BARS = 24;
 
+// make every input-bar transition ~2x snappier (open, close, rise, fall)
+const ibFastCSS = `.input-wrapper,.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.14s !important}`;
+
 export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
   const { activeModel, setActiveModel, isSending } = useChatStore();
   const messages = useChatStore((s) => s.messages);
@@ -153,6 +156,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   return (
     <>
       <style>{ibCSS}</style>
+      <style>{ibFastCSS}</style>
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
       <input type="file" ref={imgRef} accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
       <div className="input-wrapper" style={{ bottom: `${bottomOffset}px` }}>
