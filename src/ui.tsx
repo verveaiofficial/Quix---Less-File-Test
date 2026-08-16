@@ -26,8 +26,7 @@ export function AiMessage({ message, mid }: { message: ChatMessage & { thinkTime
 export function MessageList() {
   const messages = useChatStore((s) => s.messages);
   const ref = useRef<HTMLDivElement>(null);
-  const lastUserCount = useRef(0);
-  const scrolledUsers = useRef<Set<string>>(new Set());
+  const scrolledUserIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const c = ref.current;
@@ -35,26 +34,22 @@ export function MessageList() {
     const container = c.firstElementChild as HTMLElement;
     if (!container) return;
     
-    const userMessages = messages.filter((m) => m.role === "user");
-    const currentUserCount = userMessages.length;
+    // Find the last user message
+    const lastUser = [...messages].reverse().find((m) => m.role === "user");
     
-    // only scroll when a NEW user message appears
-    if (currentUserCount > lastUserCount.current) {
-      const newUser = userMessages[userMessages.length - 1];
-      if (newUser && !scrolledUsers.current.has(newUser.id)) {
-        scrolledUsers.current.add(newUser.id);
-        requestAnimationFrame(() => {
-          const el = container.querySelector(`[data-mid="${newUser.id}"]`) as HTMLElement;
-          if (!el) return;
-          const header = document.querySelector('#chat-header') as HTMLElement;
-          const headerH = header ? header.offsetHeight : 0;
-          const elTop = el.offsetTop;
-          const desired = elTop - headerH - 8;
-          c.scrollTo({ top: Math.max(0, desired), behavior: "smooth" });
-        });
-      }
+    // Only scroll if we haven't scrolled to this specific user message yet
+    if (lastUser && !scrolledUserIds.current.has(lastUser.id)) {
+      scrolledUserIds.current.add(lastUser.id);
+      requestAnimationFrame(() => {
+        const el = container.querySelector(`[data-mid="${lastUser.id}"]`) as HTMLElement;
+        if (!el) return;
+        const header = document.querySelector('#chat-header') as HTMLElement;
+        const headerH = header ? header.offsetHeight : 0;
+        const elTop = el.offsetTop;
+        const desired = elTop - headerH - 8;
+        c.scrollTo({ top: Math.max(0, desired), behavior: "smooth" });
+      });
     }
-    lastUserCount.current = currentUserCount;
   }, [messages]);
 
   return (<><style>{mlCSS}</style><div className="message-scroll" ref={ref}><div className="message-container">{messages.map((m) => m.role === "user" ? (<UserMessage key={m.id} mid={m.id} content={m.content} attachments={m.attachments} />) : (<AiMessage key={m.id} mid={m.id} message={m as any} />))}</div></div></>);
