@@ -54,7 +54,6 @@ export default function App() {
     addMessage({ id: aiId, role: "ai", model: startModel, content: "", thoughts: "", createdAt: Date.now(), status: "thinking" } as any);
     setIsSending(true);
 
-    // ===== DEEPTHINK AGENT PATH =====
     if (startModel === "deepthink") {
       useUsageStore.getState().consume("deepthink");
       const t0 = Date.now();
@@ -77,7 +76,6 @@ export default function App() {
       return;
     }
 
-    // ===== NORMAL MODELS PATH =====
     const chain = CHAIN[startModel] || [startModel, "flash", "lite"];
     const attempt = (i: number) => {
       if (i >= chain.length) { updateMessage(aiId, { content: "All models are out of quota for today.", status: "error" }); setIsSending(false); return; }
