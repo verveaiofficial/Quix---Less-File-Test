@@ -53,7 +53,6 @@ export function MessageList() {
     if (!lastUser || scrolledUserIds.current.has(lastUser.id)) return;
     scrolledUserIds.current.add(lastUser.id);
 
-    // single settled run — no double scroll, no shake
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const el = container.querySelector(`[data-mid="${lastUser.id}"]`) as HTMLElement;
       if (!el) return;
@@ -62,7 +61,10 @@ export function MessageList() {
       const hRect = header ? header.getBoundingClientRect() : null;
       const gap = hRect ? Math.max(0, hRect.bottom - cRect.top) : 0;
 
-      container.style.paddingBottom = "";
+      // padding only ever grows — never wiped, never shrinks
+      let cur = parseFloat(getComputedStyle(container).paddingBottom) || 0;
+      if (cur < 110) { container.style.paddingBottom = "110px"; cur = 110; }
+
       const elRect = el.getBoundingClientRect();
       const elTop = elRect.top - cRect.top + c.scrollTop;
       const lastChild = container.lastElementChild as HTMLElement;
@@ -71,7 +73,7 @@ export function MessageList() {
 
       const desired = Math.max(0, elTop - gap - 8);
       const need = desired + c.clientHeight - contentBottom;
-      if (need > 0) container.style.paddingBottom = `${need}px`;
+      if (need > 1) container.style.paddingBottom = `${cur + need}px`;
 
       fastScroll(c, desired, 220);
     }));
