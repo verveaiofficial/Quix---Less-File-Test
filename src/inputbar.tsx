@@ -6,8 +6,8 @@ import { PendingAttachment, readFileAsAttachment } from "./ui";
 
 const WAVE_BARS = 24;
 
-// make every input-bar transition ~2x snappier (open, close, rise, fall)
-const ibFastCSS = `.input-wrapper,.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.14s !important}`;
+// snappy: bar moves in ~120ms, ahead of the phone keyboard animation
+const ibFastCSS = `.input-wrapper{transition:bottom .12s cubic-bezier(.2,.9,.3,1) !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
 
 export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
   const { activeModel, setActiveModel, isSending } = useChatStore();
@@ -30,6 +30,8 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const committedRef = useRef<string[]>([]);
   const finishTimeoutRef = useRef<any>(null);
   const spinDir = useRef(1);
+  const settleUntil = useRef(0);
+  const lastKb = useRef(0);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
@@ -37,12 +39,45 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const fileCount = extractFiles(messages).length;
   const session = useAuthStore((s) => s.session);
   const isGuest = !session;
+  const isCoarse = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 
   useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
-  useEffect(() => { const r = () => { if (window.visualViewport) { const kb = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop; setBottomOffset(Math.max(0, kb)); } }; if (window.visualViewport) window.visualViewport.addEventListener("resize", r); return () => { if (window.visualViewport) window.visualViewport.removeEventListener("resize", r); }; }, []);
+  useEffect(() => {
+    try { lastKb.current = parseInt(localStorage.getItem("quix_kb_h") || "0", 10) || 0; } catch {}
+    const readKb = () => Math.max(0, window.innerHeight - window.visualViewport!.height - window.visualViewport!.offsetTop);
+    const r = () => {
+      if (!window.visualViewport) return;
+      if (Date.now() < settleUntil.current) return; // ignore the keyboard's slow animation
+      const kb = readKb();
+      if (kb > 50) { lastKb.current = kb; try { localStorage.setItem("quix_kb_h", String(kb)); } catch {} }
+      setBottomOffset(kb);
+    };
+    if (window.visualViewport) window.visualViewport.addEventListener("resize", r);
+    return () => { if (window.visualViewport) window.visualViewport.removeEventListener("resize", r); };
+  }, []);
   useEffect(() => { return () => { listeningRef.current = false; try { recRef.current?.stop(); } catch {} if (finishTimeoutRef.current) clearTimeout(finishTimeoutRef.current); }; }, []);
 
   const prevent = (e: any) => e.preventDefault();
+
+  // jump ahead of the keyboard on focus
+  const onFocused = () => {
+    if (!isCoarse || !window.visualViewport) return;
+    const predict = lastKb.current || Math.round(window.innerHeight * 0.42);
+    settleUntil.current = Date.now() + 420;
+    setBottomOffset(predict);
+    setTimeout(() => {
+      if (document.activeElement !== taRef.current || !window.visualViewport) return;
+      const kb = Math.max(0, window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop);
+      if (kb > 50) { lastKb.current = kb; try { localStorage.setItem("quix_kb_h", String(kb)); } catch {} setBottomOffset(kb); }
+    }, 460);
+  };
+  // drop before the keyboard even starts closing
+  const onBlurred = () => {
+    if (!menuOpen) {
+      settleUntil.current = Date.now() + 420;
+      setBottomOffset(0);
+    }
+  };
 
   const resetVoiceRefs = () => { sessionTextRef.current = ""; interimTailRef.current = ""; committedRef.current = []; };
 
@@ -167,7 +202,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
               {Array.from({ length: WAVE_BARS }).map((_, i) => (<span key={i} style={{ animationDelay: `${(i % 8) * 0.09}s` }} />))}
             </div>
           ) : (
-            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research..." : "Ask Quix..."} rows={1} value={inputValue} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} onBlur={() => { if (!menuOpen) setBottomOffset(0); }} />
+            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research..." : "Ask Quix..."} rows={1} value={inputValue} onFocus={onFocused} onBlur={onBlurred} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} />
           )}
           <div className="action-row">
             <div className="action-left">
