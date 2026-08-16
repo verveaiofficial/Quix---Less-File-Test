@@ -270,14 +270,16 @@ export function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }:
 }
 
 // ================= UI (MESSAGES) =================
-function fastScroll(el: HTMLElement, to: number, duration = 220) {
+function fastScroll(el: HTMLElement, to: number, duration = 240) {
   const anyEl = el as any;
   if (anyEl._fsRaf) cancelAnimationFrame(anyEl._fsRaf);
+  // Force manual control so the browser's own smooth-scroll can't fight our animation (fixes the double-jump)
+  el.style.scrollBehavior = "auto";
   const start = el.scrollTop;
   const diff = to - start;
   if (Math.abs(diff) < 2) { el.scrollTop = to; return; }
   const t0 = performance.now();
-  const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+  const ease = (t: number) => 1 - Math.pow(1 - t, 4);
   const step = (now: number) => {
     const p = Math.min(1, (now - t0) / duration);
     el.scrollTop = start + diff * ease(p);
@@ -336,7 +338,7 @@ export function MessageList() {
       const need = desired + c.clientHeight - contentBottom;
       if (need > 1) container.style.paddingBottom = `${cur + need}px`;
 
-      fastScroll(c, desired, 220);
+      fastScroll(c, desired, 240);
     }));
   }, [messages]);
 
