@@ -26,37 +26,35 @@ export function AiMessage({ message, mid }: { message: ChatMessage & { thinkTime
 export function MessageList() {
   const messages = useChatStore((s) => s.messages);
   const ref = useRef<HTMLDivElement>(null);
-  const mounted = useRef(false);
-  const lastUserScrolled = useRef<string | null>(null);
+  const lastUserCount = useRef(0);
+  const scrolledUsers = useRef<Set<string>>(new Set());
 
-  // first open: jump straight to the bottom
-  useEffect(() => { const c = ref.current; if (c) c.scrollTop = c.scrollHeight; }, []);
-
-  // ONLY when a new user message is sent: smooth-scroll it right below the header.
-  // AI messages / streaming never trigger any scroll.
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
     const container = c.firstElementChild as HTMLElement;
     if (!container) return;
-    const lastUser = [...messages].reverse().find((m) => m.role === "user");
-    if (!mounted.current) { mounted.current = true; lastUserScrolled.current = lastUser ? lastUser.id : null; return; }
-    if (!lastUser || lastUserScrolled.current === lastUser.id) return;
-    lastUserScrolled.current = lastUser.id;
-    requestAnimationFrame(() => {
-      const el = container.querySelector(`[data-mid="${lastUser.id}"]`) as HTMLElement;
-      if (!el) return;
-      container.style.paddingBottom = "";
-      const cRect = c.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      const lastChild = container.lastElementChild as HTMLElement;
-      const lastRect = lastChild.getBoundingClientRect();
-      const contentBottom = c.scrollTop + (lastRect.bottom - cRect.top);
-      const desired = c.scrollTop + (elRect.top - cRect.top) - 8;
-      const need = desired + c.clientHeight - contentBottom;
-      if (need > 0) container.style.paddingBottom = `${need}px`;
-      requestAnimationFrame(() => { c.scrollTo({ top: Math.max(0, desired), behavior: "smooth" }); });
-    });
+    
+    const userMessages = messages.filter((m) => m.role === "user");
+    const currentUserCount = userMessages.length;
+    
+    // only scroll when a NEW user message appears
+    if (currentUserCount > lastUserCount.current) {
+      const newUser = userMessages[userMessages.length - 1];
+      if (newUser && !scrolledUsers.current.has(newUser.id)) {
+        scrolledUsers.current.add(newUser.id);
+        requestAnimationFrame(() => {
+          const el = container.querySelector(`[data-mid="${newUser.id}"]`) as HTMLElement;
+          if (!el) return;
+          const header = document.querySelector('#chat-header') as HTMLElement;
+          const headerH = header ? header.offsetHeight : 0;
+          const elTop = el.offsetTop;
+          const desired = elTop - headerH - 8;
+          c.scrollTo({ top: Math.max(0, desired), behavior: "smooth" });
+        });
+      }
+    }
+    lastUserCount.current = currentUserCount;
   }, [messages]);
 
   return (<><style>{mlCSS}</style><div className="message-scroll" ref={ref}><div className="message-container">{messages.map((m) => m.role === "user" ? (<UserMessage key={m.id} mid={m.id} content={m.content} attachments={m.attachments} />) : (<AiMessage key={m.id} mid={m.id} message={m as any} />))}</div></div></>);
