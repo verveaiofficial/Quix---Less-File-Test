@@ -8,6 +8,20 @@ import { ThinkingStatus } from "./thoughts";
 export { MarkdownText, BubbleIndicator, faviconUrl, domainOf } from "./msgstream";
 export { ThinkingStatus } from "./thoughts";
 
+function fastScroll(el: HTMLElement, to: number, duration = 260) {
+  const start = el.scrollTop;
+  const diff = to - start;
+  if (Math.abs(diff) < 2) { el.scrollTop = to; return; }
+  const t0 = performance.now();
+  const ease = (t: number) => 1 - Math.pow(1 - t, 3);
+  const step = (now: number) => {
+    const p = Math.min(1, (now - t0) / duration);
+    el.scrollTop = start + diff * ease(p);
+    if (p < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
 export function UserMessage({ content, attachments, mid }: { content: string; attachments?: AttachmentMeta[]; mid: string }) { return (<div className="um-wrap" data-mid={mid}><style>{umCSS}</style><div className="message-user">{attachments && attachments.length > 0 && (<div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: content ? 10 : 0 }}>{attachments.map((a, i) => (<div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "rgba(255,255,255,0.7)", maxWidth: 160 }}>{a.kind === "image" && a.previewUrl ? (<img src={a.previewUrl} alt={a.name} style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover" }} />) : null}<span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span></div>))}</div>)}{content}</div><div className="um-actions"><button onClick={() => copyText(content)}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg></button></div></div>); }
 
 export function AiMessage({ message, mid }: { message: ChatMessage & { thinkTime?: number }; mid: string }) {
@@ -45,7 +59,6 @@ export function MessageList() {
       const hRect = header ? header.getBoundingClientRect() : null;
       const gap = hRect ? Math.max(0, hRect.bottom - cRect.top) : 0;
 
-      // measure with no extra padding
       container.style.paddingBottom = "";
       const elRect = el.getBoundingClientRect();
       const elTop = elRect.top - cRect.top + c.scrollTop;
@@ -54,11 +67,10 @@ export function MessageList() {
       const contentBottom = lastRect.bottom - cRect.top + c.scrollTop;
 
       const desired = Math.max(0, elTop - gap - 8);
-      // create space below so the user message CAN reach the top
       const need = desired + c.clientHeight - contentBottom;
       if (need > 0) container.style.paddingBottom = `${need}px`;
 
-      c.scrollTo({ top: desired, behavior: "smooth" });
+      fastScroll(c, desired, 260);
     };
 
     requestAnimationFrame(() => { doScroll(); setTimeout(doScroll, 120); });
