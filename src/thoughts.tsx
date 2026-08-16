@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { SourceItem } from "./core";
+import { SourceItem, useStreamText } from "./core";
 import { qtsCSS, searchIconSvg } from "./styles";
 import { BubbleIndicator, faviconUrl, domainOf } from "./msgstream";
 
@@ -29,10 +29,11 @@ export function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }:
   const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(true);
   const [sourcesOpen, setSourcesOpen] = useState(false);
+  const shownThoughts = useStreamText(thoughts || "", !done, 20, 3);
   useEffect(() => { if (done) return; const t = setInterval(() => setElapsed((p) => p + 1), 1000); return () => clearInterval(t); }, [done]);
   useEffect(() => { if (done) setExpanded(false); }, [done]);
   const finalTime = thinkTime != null ? thinkTime : elapsed;
-  const thoughtParas = (thoughts || "").split(/\n+/).map((t) => t.trim()).filter(Boolean);
+  const thoughtParas = shownThoughts.split(/\n+/).map((t) => t.trim()).filter(Boolean);
   const found = sources?.length ?? 0;
   const favs = (sources || []).slice(0, 6).map((s) => faviconUrl(s.uri)).filter(Boolean) as string[];
   const hasReason = thoughtParas.length > 0 || found > 0;
