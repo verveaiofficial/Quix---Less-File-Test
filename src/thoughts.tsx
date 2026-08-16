@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { SourceItem, useStreamText } from "./core";
 import { qtsCSS, searchIconSvg } from "./styles";
@@ -29,9 +29,27 @@ export function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }:
   const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(true);
   const [sourcesOpen, setSourcesOpen] = useState(false);
-  const shownThoughts = useStreamText(thoughts || "", !done, 20, 3);
+  const [caughtUp, setCaughtUp] = useState(false);
+  
+  const fullThoughts = thoughts || "";
+  const shownThoughts = useStreamText(fullThoughts, !caughtUp, 20, 3);
+  
   useEffect(() => { if (done) return; const t = setInterval(() => setElapsed((p) => p + 1), 1000); return () => clearInterval(t); }, [done]);
-  useEffect(() => { if (done) setExpanded(false); }, [done]);
+  
+  // Keep streaming until we've caught up to the full thoughts
+  useEffect(() => {
+    if (done && !caughtUp && shownThoughts.length >= fullThoughts.length) {
+      setCaughtUp(true);
+    }
+  }, [done, caughtUp, shownThoughts.length, fullThoughts.length]);
+  
+  // Only collapse after fully caught up
+  useEffect(() => {
+    if (caughtUp && finished) {
+      setExpanded(false);
+    }
+  }, [caughtUp, finished]);
+  
   const finalTime = thinkTime != null ? thinkTime : elapsed;
   const thoughtParas = shownThoughts.split(/\n+/).map((t) => t.trim()).filter(Boolean);
   const found = sources?.length ?? 0;
