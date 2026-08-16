@@ -6,8 +6,7 @@ import { PendingAttachment, readFileAsAttachment } from "./ui";
 
 const WAVE_BARS = 24;
 
-// snappy: bar moves in ~120ms, ahead of the phone keyboard animation
-const ibFastCSS = `.input-wrapper{transition:bottom .12s cubic-bezier(.2,.9,.3,1) !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
+const ibFastCSS = `.input-wrapper{transition:bottom .1s cubic-bezier(.2,.9,.3,1) !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
 
 export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
   const { activeModel, setActiveModel, isSending } = useChatStore();
@@ -32,6 +31,8 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const spinDir = useRef(1);
   const settleUntil = useRef(0);
   const lastKb = useRef(0);
+  const offsetRef = useRef(0);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const imgRef = useRef<HTMLInputElement>(null);
@@ -41,16 +42,31 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const isGuest = !session;
   const isCoarse = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 
+  // clamp so the bar can NEVER cover the header, even with a stale saved kb height
+  const applyOffset = (v: number) => {
+    const header = document.querySelector("#chat-header") as HTMLElement | null;
+    const hb = header ? header.getBoundingClientRect().bottom : 64;
+    const barH = wrapRef.current ? wrapRef.current.offsetHeight : 130;
+    const max = Math.max(0, window.innerHeight - hb - barH - 8);
+    const val = Math.max(0, Math.min(v, max));
+    offsetRef.current = val;
+    setBottomOffset(val);
+  };
+  const applyRef = useRef(applyOffset);
+  applyRef.current = applyOffset;
+
   useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
   useEffect(() => {
     try { lastKb.current = parseInt(localStorage.getItem("quix_kb_h") || "0", 10) || 0; } catch {}
     const readKb = () => Math.max(0, window.innerHeight - window.visualViewport!.height - window.visualViewport!.offsetTop);
     const r = () => {
       if (!window.visualViewport) return;
-      if (Date.now() < settleUntil.current) return; // ignore the keyboard's slow animation
+      if (Date.now() < settleUntil.current) return;
       const kb = readKb();
+      // keyboard started closing -> drop the bar NOW, before the keyboard hides
+      if (kb < offsetRef.current - 40) { applyRef.current(0); return; }
       if (kb > 50) { lastKb.current = kb; try { localStorage.setItem("quix_kb_h", String(kb)); } catch {} }
-      setBottomOffset(kb);
+      applyRef.current(kb);
     };
     if (window.visualViewport) window.visualViewport.addEventListener("resize", r);
     return () => { if (window.visualViewport) window.visualViewport.removeEventListener("resize", r); };
@@ -59,23 +75,21 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
 
   const prevent = (e: any) => e.preventDefault();
 
-  // jump ahead of the keyboard on focus
   const onFocused = () => {
     if (!isCoarse || !window.visualViewport) return;
     const predict = lastKb.current || Math.round(window.innerHeight * 0.42);
     settleUntil.current = Date.now() + 420;
-    setBottomOffset(predict);
+    applyOffset(predict);
     setTimeout(() => {
       if (document.activeElement !== taRef.current || !window.visualViewport) return;
       const kb = Math.max(0, window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop);
-      if (kb > 50) { lastKb.current = kb; try { localStorage.setItem("quix_kb_h", String(kb)); } catch {} setBottomOffset(kb); }
+      if (kb > 50) { lastKb.current = kb; try { localStorage.setItem("quix_kb_h", String(kb)); } catch {} applyOffset(kb); }
     }, 460);
   };
-  // drop before the keyboard even starts closing
   const onBlurred = () => {
     if (!menuOpen) {
       settleUntil.current = Date.now() + 420;
-      setBottomOffset(0);
+      applyOffset(0);
     }
   };
 
@@ -194,7 +208,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
       <style>{ibFastCSS}</style>
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
       <input type="file" ref={imgRef} accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
-      <div className="input-wrapper" style={{ bottom: `${bottomOffset}px` }}>
+      <div className="input-wrapper" ref={wrapRef} style={{ bottom: `${bottomOffset}px` }}>
         <div className={`input-bar ${listening ? "listening" : ""}`}>
           {!isDeepThink && attachments.length > 0 && (<div className="attach-row">{attachments.map((a) => (<div className="attach-chip" key={a.id}>{a.kind === "image" && a.previewUrl ? <img className="attach-thumb" src={a.previewUrl} alt={a.name} /> : null}<span>{a.name}</span><button className="attach-remove" onClick={() => setAttachments((p) => p.filter((x) => x.id !== a.id))}>×</button></div>))}</div>)}
           {listening ? (
