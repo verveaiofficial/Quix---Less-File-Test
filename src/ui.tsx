@@ -31,26 +31,21 @@ export function MessageList() {
   useEffect(() => {
     const c = ref.current;
     if (!c) return;
-    
+
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
-    
-    if (lastUser && !scrolledUserIds.current.has(lastUser.id)) {
-      scrolledUserIds.current.add(lastUser.id);
-      requestAnimationFrame(() => {
-        const el = c.querySelector(`[data-mid="${lastUser.id}"]`) as HTMLElement;
-        if (!el) return;
-        
-        const cRect = c.getBoundingClientRect();
-        const elRect = el.getBoundingClientRect();
-        const header = document.querySelector('#chat-header') as HTMLElement;
-        const headerRect = header ? header.getBoundingClientRect() : { top: 0, height: 0 };
-        
-        const elTopInContainer = elRect.top - cRect.top + c.scrollTop;
-        const desiredScroll = elTopInContainer - headerRect.height - 8;
-        
-        c.scrollTo({ top: Math.max(0, desiredScroll), behavior: "smooth" });
-      });
-    }
+    if (!lastUser || scrolledUserIds.current.has(lastUser.id)) return;
+    scrolledUserIds.current.add(lastUser.id);
+
+    requestAnimationFrame(() => {
+      const el = c.querySelector(`[data-mid="${lastUser.id}"]`) as HTMLElement;
+      if (!el) return;
+      const cRect = c.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+      // position of element inside the scroll container
+      const elTopInContainer = elRect.top - cRect.top + c.scrollTop;
+      // put it at the very top of the visible area (already sits below the header)
+      c.scrollTo({ top: Math.max(0, elTopInContainer - 8), behavior: "smooth" });
+    });
   }, [messages]);
 
   return (<><style>{mlCSS}</style><div className="message-scroll" ref={ref}><div className="message-container">{messages.map((m) => m.role === "user" ? (<UserMessage key={m.id} mid={m.id} content={m.content} attachments={m.attachments} />) : (<AiMessage key={m.id} mid={m.id} message={m as any} />))}</div></div></>);
