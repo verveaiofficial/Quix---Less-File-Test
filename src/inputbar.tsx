@@ -31,6 +31,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const spinDir = useRef(1);
   const lastKb = useRef(0);
   const offsetRef = useRef(0);
+  const focusAt = useRef(0);
   const wrapRef = useRef<HTMLDivElement>(null);
   const alignRaf = useRef(0);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -42,18 +43,20 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const isGuest = !session;
   const isCoarse = typeof window !== "undefined" && !!window.matchMedia && window.matchMedia("(pointer: coarse)").matches;
 
-  // measure, don't calculate: glue the bar's bottom edge to the keyboard's top edge
   const alignToKeyboard = () => {
     cancelAnimationFrame(alignRaf.current);
     alignRaf.current = requestAnimationFrame(() => {
       const w = wrapRef.current;
       if (!w || !window.visualViewport) return;
       const vv = window.visualViewport;
+      const kbOpen = window.innerHeight - vv.height > 80;
+      // keyboard not open yet (right after focus) -> trust the prediction, don't yank down
+      if (!kbOpen && Date.now() - focusAt.current < 700 && focusAt.current > 0) return;
       const kbTop = vv.offsetTop + vv.height;
       const wr = w.getBoundingClientRect();
       const delta = wr.bottom - kbTop;
       if (Math.abs(delta) < 3) {
-        if (window.innerHeight - vv.height > 80 && offsetRef.current > 50) {
+        if (kbOpen && offsetRef.current > 50) {
           lastKb.current = offsetRef.current;
           try { localStorage.setItem("quix_kb_h", String(offsetRef.current)); } catch {}
         }
@@ -89,15 +92,17 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
 
   const onFocused = () => {
     if (!isCoarse) return;
+    focusAt.current = Date.now();
     const predict = lastKb.current || Math.round(window.innerHeight * 0.42);
     offsetRef.current = predict;
     setBottomOffset(predict);
-    setTimeout(() => alignRef.current(), 60);
     setTimeout(() => alignRef.current(), 250);
     setTimeout(() => alignRef.current(), 500);
+    setTimeout(() => alignRef.current(), 800);
   };
   const onBlurred = () => {
     if (!menuOpen) {
+      focusAt.current = 0;
       offsetRef.current = 0;
       setBottomOffset(0);
     }
