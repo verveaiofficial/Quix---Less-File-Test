@@ -185,3 +185,515 @@ export function AuthScreen() {
     </>
   );
 }
+export function UsagePage() {
+  const open = useUsagePageStore((s) => s.open);
+  const close = useUsagePageStore((s) => s.closePage);
+  const usage = useUsageStore((s) => s.usage);
+  const limitFor = useUsageStore((s) => s.limitFor);
+  const [left, setLeft] = useState(msToReset());
+  useEffect(() => { const t = setInterval(() => setLeft(msToReset()), 1000); return () => clearInterval(t); }, []);
+  const h = Math.floor(left / 3600000); const m = Math.floor((left % 3600000) / 60000); const s = Math.floor((left % 60000) / 1000);
+  return (
+    <>
+      <style>{stCSS}</style>
+      <style>{usCSS}</style>
+      <div id="usage-screen" className={open ? "show" : ""}>
+        <div className="set-header"><button className="set-back" onClick={close} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Usage</div></div>
+        <div className="set-body">
+          <div className="usage-timer">
+            <span className="set-label" style={{ fontSize: 12 }}>Resets in</span>
+            <span className="usage-timer-val">{pad2(h)}:{pad2(m)}:{pad2(s)}</span>
+          </div>
+          <div className="set-section">
+            <div className="set-label">Today's usage by model</div>
+            {CHAT_MODELS.map((mdl) => {
+              const lim = limitFor(mdl);
+              const leftCount = usage[mdl] ?? 0;
+              return (
+                <div className="limit-row" key={mdl}>
+                  <div className="limit-top">
+                    <span>{MODELS[mdl].name}</span>
+                    <span>{lim < 0 ? "Unlimited" : lim === 0 ? "Sign in required" : `${leftCount}/${lim}`}</span>
+                  </div>
+                  <div className="limit-bar"><div className="limit-fill" style={{ width: lim < 0 ? 100 : lim === 0 ? 0 : `${Math.min(100, (leftCount / lim) * 100)}%` }} /></div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mem-empty">Daily usage reset at midnight UTC.</div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function ScreenSizePage() {
+  const open = useScreenPageStore((s) => s.open);
+  const close = useScreenPageStore((s) => s.closePage);
+  const { fontScale, setFontScale } = useUIStore();
+  return (
+    <>
+      <style>{stCSS}</style>
+      <style>{dsCSS}</style>
+      <div id="display-screen" className={open ? "show" : ""}>
+        <div className="set-header"><button className="set-back" onClick={close} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Screen size</div></div>
+        <div className="set-body">
+          <div className="set-section">
+            <div className="set-label">Text size</div>
+            <div className="font-row">
+              <button className="font-btn" onClick={() => setFontScale(fontScale - 0.05)}>−</button>
+              <span className="font-val">{Math.round(fontScale * 100)}%</span>
+              <button className="font-btn" onClick={() => setFontScale(fontScale + 0.05)}>+</button>
+            </div>
+            <div className="mem-empty">Applies to the whole app instantly.</div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function SettingsPage() {
+  const { settingsOpen, closeSettings, openMemories } = useUIStore();
+  const { profile, setProfile } = useProfileStore();
+  const { session, signOut } = useAuthStore();
+  const { resetChat } = useChatStore();
+  const memories = useMemoryStore((s) => s.memories);
+  const loadFor = useMemoryStore((s) => s.loadFor);
+  const openUsagePage = useUsagePageStore((s) => s.openPage);
+  const openScreenPage = useScreenPageStore((s) => s.openPage);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const uid = session?.user?.id ?? null;
+  useEffect(() => { if (uid) loadFor(uid); }, [uid, loadFor]);
+  useEffect(() => {
+    if (session?.user?.email && !profile.email) setProfile({ email: session.user.email });
+    const meta = session?.user?.user_metadata as any;
+    if (meta?.full_name && !profile.name) setProfile({ name: meta.full_name });
+  }, [session]);
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f || f.size > 1.5 * 1024 * 1024) return;
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const size = 256;
+      canvas.width = size; canvas.height = size;
+      let srcX = 0, srcY = 0, srcW = img.width, srcH = img.height;
+      if (img.width > img.height) { srcX = (img.width - img.height) / 2; srcW = img.height; } else { srcY = (img.height - img.width) / 2; srcH = img.width; }
+      ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, size, size);
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const reader = new FileReader();
+        reader.onload = () => setProfile({ avatar: String(reader.result || "") });
+        reader.readAsDataURL(blob);
+      }, "image/jpeg", 0.85);
+    };
+    img.src = URL.createObjectURL(f);
+  };
+
+  return (
+    <>
+      <style>{stCSS}</style>
+      <div id="settings-screen" className={settingsOpen ? "show" : ""}>
+        <div className="set-header"><button className="set-back" onClick={closeSettings} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Profile & Settings</div></div>
+        <div className="set-body">
+          <div className="avatar-wrap">
+            <button className="avatar" onClick={() => fileRef.current?.click()}>
+              {profile.avatar ? (<img src={profile.avatar} alt="profile" />) : (<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.6)" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>)}
+            </button>
+            <input type="file" accept="image/*" ref={fileRef} style={{ display: "none" }} onChange={handleImageUpload} />
+          </div>
+          <div className="set-section">
+            <div className="set-label">Profile</div>
+            <input className="set-field" type="text" placeholder="Name" value={profile.name} onChange={(e) => setProfile({ name: e.target.value })} />
+            <input className="set-field" type="email" placeholder="Email" value={profile.email} onChange={(e) => setProfile({ email: e.target.value })} />
+          </div>
+          <div className="set-section">
+            <div className="set-label">Settings</div>
+            <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openUsagePage())}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
+                Usage
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
+            {uid && (
+              <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openMemories())}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1.3.5 2.6 1.5 3.5.8.8 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></svg>
+                  Memories{memories.length > 0 ? ` · ${memories.length}` : ""}
+                </div>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+              </button>
+            )}
+            <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openScreenPage())}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" /><line x1="12" y1="18" x2="12.01" y2="18" /></svg>
+                Screen size
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
+          </div>
+          {session && (<div className="set-section"><button className="signout-big" onClick={async () => { await signOut(); resetChat(); }}>Sign out</button></div>)}
+          <div className="watermark">Quix · {APP_VERSION}</div>
+        </div>
+      </div>
+      <UsagePage />
+      <ScreenSizePage />
+    </>
+  );
+}
+
+export function MemoriesPage() {
+  const { memoriesOpen, closeMemories } = useUIStore();
+  const { session } = useAuthStore();
+  const { memories, loadFor, addMemory, removeMemory } = useMemoryStore();
+  const [memInput, setMemInput] = useState("");
+  const uid = session?.user?.id ?? null;
+  useEffect(() => { if (uid && memoriesOpen) loadFor(uid); }, [uid, memoriesOpen, loadFor]);
+  return (
+    <>
+      <style>{stCSS}</style>
+      <style>{mmCSS}</style>
+      <div id="memories-screen" className={memoriesOpen ? "show" : ""}>
+        <div className="set-header"><button className="set-back" onClick={closeMemories} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Memories</div></div>
+        <div className="set-body">
+          {uid ? (
+            <>
+              <div className="set-section">
+                <div className="set-label">Teach Quix</div>
+                <div className="mem-input-row">
+                  <input className="set-field" type="text" placeholder="Teach Quix something about you..." value={memInput} onChange={(e) => setMemInput(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && memInput.trim()) { addMemory(uid, memInput); setMemInput(""); } }} />
+                  <button className="mem-add" onClick={() => { if (memInput.trim()) { addMemory(uid, memInput); setMemInput(""); } }}>+</button>
+                </div>
+              </div>
+              <div className="set-section">
+                <div className="set-label">All memories ({memories.length})</div>
+                {memories.length > 0 ? (memories.map((m: any) => (<div className="mem-item" key={m.id}><span>{m.text}</span><button onClick={() => removeMemory(uid, m.id)}>×</button></div>))) : (<div className="mem-empty">No memories yet. Quix also writes automatic memories from your last 24h of chats at every midnight UTC.</div>)}
+              </div>
+            </>
+          ) : (<div className="mem-empty">Sign in to use memories.</div>)}
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function LoadingScreen() {
+  const loaderRef = useRef<HTMLDivElement>(null); const centerRef = useRef<HTMLDivElement>(null); const canvasRef = useRef<HTMLCanvasElement>(null); const labelRef = useRef<HTMLDivElement>(null); const brandRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current; if (!canvas) return; const ctx = canvas.getContext("2d"); if (!ctx) return;
+    const W = 185, H = 185, R = 92, cx = 92, cy = 92; const INTRO_MS = 1500;
+    const blobs = ORB_COLORS.map((color, i) => ({ fx: 0.71 + i * 0.09, fy: 1.13 - i * 0.05, phase: i * 0.9, amp: 0.5, r: 80 - i * 2, color }));
+    const KF = [{ p: 0.0, oy: -170, rx: 38, ry: 52 }, { p: 0.32, oy: -8, rx: 36, ry: 58 }, { p: 0.46, oy: 4, rx: 118, ry: 42 }, { p: 0.68, oy: 0, rx: 96, ry: 88 }, { p: 1.0, oy: 0, rx: 92, ry: 92 }];
+    const easeInCubic = (t: number) => t * t * t; const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3); const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+    const getClip = (p: number) => { let a = KF[0], b = KF[1]; for (let i = 0; i < KF.length - 1; i++) { if (p >= KF[i].p && p <= KF[i + 1].p) { a = KF[i]; b = KF[i + 1]; break; } } const span = b.p - a.p; const local = span === 0 ? 1 : (p - a.p) / span; const e = p < 0.44 ? easeInCubic(local) : easeOutCubic(local); return { oy: lerp(a.oy, b.oy, e), rx: lerp(a.rx, b.rx, e), ry: lerp(a.ry, b.ry, e) }; };
+    const clipShape = (c: CanvasRenderingContext2D, ecx: number, ecy: number, rx: number, ry: number, fall: number) => { c.beginPath(); if (fall > 0.05) { const pointY = ecy - ry * 1.35; c.arc(ecx, ecy + ry * 0.1, ry * fall * 1.1 + rx * (1 - fall), Math.PI * 0.15, Math.PI * 0.85); c.bezierCurveTo(ecx - rx * 0.8, ecy - ry * 0.3, ecx - rx * 0.15, pointY + ry * 0.3, ecx, pointY); c.bezierCurveTo(ecx + rx * 0.15, pointY + ry * 0.3, ecx + rx * 0.8, ecy - ry * 0.3, ecx + rx * ((ry * fall * 1.1 + rx * (1 - fall)) / rx) * 0.95, ecy + ry * 0.1 - ry * fall); c.closePath(); } else { c.ellipse(ecx, ecy, rx, ry, 0, 0, Math.PI * 2); } };
+    let bt = 0, last = performance.now(), id = 0; let introStart: number | null = null, introDone = false;
+    const frame = (now: number) => {
+      const dt = now - last; last = now;
+      const s = (Math.sin(((now % 5000) / 5000) * Math.PI * 2 - Math.PI / 2) + 1) / 2;
+      bt += (0.12 + (2.2 - 0.12) * s) * dt * 0.001;
+      ctx.clearRect(0, 0, W, H); ctx.save();
+      if (!introDone) { if (introStart === null) introStart = now; const p = Math.min(1, (now - introStart) / INTRO_MS); const { oy, rx, ry } = getClip(p); const fall = Math.max(0, Math.min(1, -oy / 140)); ctx.beginPath(); clipShape(ctx, cx, cy + oy, rx, ry, fall); ctx.clip(); if (p >= 1) { introDone = true; labelRef.current?.classList.add("show"); brandRef.current?.classList.add("show"); } } else { ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip(); }
+      const bg = ctx.createRadialGradient(cx * 0.84, cy * 0.76, 4, cx, cy, R); bg.addColorStop(0, "#1a1a2e"); bg.addColorStop(0.3, "#0f1f3d"); bg.addColorStop(0.55, "#2a1b4d"); bg.addColorStop(0.8, "#3d1f4d"); bg.addColorStop(1, "#0f2a3d"); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = "screen";
+      blobs.forEach((b) => { const bx = cx + Math.sin(b.fx * bt + b.phase) * R * b.amp; const by = cy + Math.cos(b.fy * bt + b.phase * 1.4) * R * b.amp; const br = b.r * (1 + 0.08 * Math.sin(b.fx * bt * 2.3 + b.phase)); const g = ctx.createRadialGradient(bx, by, 0, bx, by, br); g.addColorStop(0, b.color + "cc"); g.addColorStop(0.35, b.color + "88"); g.addColorStop(0.7, b.color + "33"); g.addColorStop(1, b.color + "00"); ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill(); });
+      ctx.restore(); id = requestAnimationFrame(frame);
+    };
+    let startTimer: any = null; let slideTimer: any = null;
+    startTimer = setTimeout(() => { centerRef.current?.classList.add("drop"); last = performance.now(); id = requestAnimationFrame(frame); }, 1000);
+    slideTimer = setTimeout(() => { loaderRef.current?.classList.add("slide-out"); }, 6500);
+    return () => { clearTimeout(startTimer); clearTimeout(slideTimer); cancelAnimationFrame(id); };
+  }, []);
+  return (
+    <>
+      <style>{ldCSS}</style>
+      <div id="loader" ref={loaderRef}>
+        <div className="ld-center" ref={centerRef}>
+          <canvas ref={canvasRef} width={185} height={185} />
+          <div className="quix-label" ref={labelRef}>QUIX</div>
+        </div>
+        <div className="verve-brand" ref={brandRef}>from <span>Verve</span></div>
+      </div>
+    </>
+  );
+}
+
+export function DeepThinkLayer({ frameRef }: { frameRef: React.RefObject<HTMLIFrameElement> }) {
+  return (<><style>{dtCSS}</style><iframe ref={frameRef} className="dt-frame" src="https://quix-deepthink.lovable.app" title="DeepThink" /></>);
+}
+
+export function VoiceCallLayer({ onExit }: { onExit: () => void }) {
+  return (
+    <>
+      <style>{vcCSS}</style>
+      <div className="voice-call-layer">
+        <button className="voice-call-exit" onClick={onExit} aria-label="Exit voice call"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
+        <iframe className="voice-call-frame" src="https://quix-voice.vercel.app/" title="Voice Call" allow="microphone; camera" allowUserMedia />
+      </div>
+    </>
+  );
+}
+
+// ================= INPUT BAR =================
+const WAVE_BARS = 24;
+const ibFastCSS = `.input-wrapper{transition:none !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
+
+export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
+  const { activeModel, setActiveModel, isSending } = useChatStore();
+  const messages = useChatStore((s) => s.messages);
+  const canvasOn = useCanvasStore((s) => s.on);
+  const setCanvasOn = useCanvasStore((s) => s.setOn);
+  const openFilesList = useCanvasStore((s) => s.openFilesList);
+  const [inputValue, setInputValue] = useState("");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [modelMenuOpen, setModelMenuOpen] = useState(false);
+  const [spinClass, setSpinClass] = useState("");
+  const [listening, setListening] = useState(false);
+  const [finishing, setFinishing] = useState(false);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const listeningRef = useRef(false);
+  const finishingRef = useRef(false);
+  const sessionTextRef = useRef("");
+  const interimTailRef = useRef("");
+  const committedRef = useRef<string[]>([]);
+  const finishTimeoutRef = useRef<any>(null);
+  const dropTimeoutRef = useRef<any>(null);
+  const pendingDropRef = useRef<(() => void) | null>(null);
+  const spinDir = useRef(1);
+  const offsetRef = useRef(0);
+  const forceDownRef = useRef(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const imgRef = useRef<HTMLInputElement>(null);
+  const recRef = useRef<any>(null);
+  const fileCount = extractFiles(messages).length;
+  const session = useAuthStore((s) => s.session);
+  const isGuest = !session;
+
+  useEffect(() => {
+    let raf = 0;
+    const loop = () => {
+      raf = requestAnimationFrame(loop);
+      const w = wrapRef.current;
+      if (!w || !window.visualViewport) return;
+      const vv = window.visualViewport;
+      const kbSize = window.innerHeight - vv.height;
+      if (kbSize < 120) {
+        if (offsetRef.current !== 0 || forceDownRef.current) {
+          offsetRef.current = 0;
+          forceDownRef.current = false;
+          w.style.removeProperty("transition");
+          w.style.bottom = "0px";
+        }
+        return;
+      }
+      if (forceDownRef.current) return;
+      const kbTop = vv.offsetTop + vv.height;
+      const wr = w.getBoundingClientRect();
+      const delta = wr.bottom - kbTop;
+      if (Math.abs(delta) < 1) return;
+      const next = Math.max(0, offsetRef.current + delta);
+      offsetRef.current = next;
+      w.style.bottom = `${next}px`;
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+
+  useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
+  useEffect(() => { return () => { listeningRef.current = false; try { recRef.current?.stop(); } catch {} if (finishTimeoutRef.current) clearTimeout(finishTimeoutRef.current); if (dropTimeoutRef.current) clearTimeout(dropTimeoutRef.current); if (pendingDropRef.current) { window.removeEventListener("quix-msg-scroll-done", pendingDropRef.current); pendingDropRef.current = null; } }; }, []);
+
+  const prevent = (e: any) => e.preventDefault();
+  const resetVoiceRefs = () => { sessionTextRef.current = ""; interimTailRef.current = ""; committedRef.current = []; };
+  const commitAndReset = () => {
+    const chunk = [sessionTextRef.current, interimTailRef.current].filter(Boolean).join(" ").trim();
+    if (chunk) committedRef.current.push(chunk);
+    const full = committedRef.current.join(" ").trim();
+    resetVoiceRefs();
+    if (full) setInputValue((prev) => (prev ? prev + " " + full : full).trim());
+  };
+  const stopMic = () => { listeningRef.current = false; setListening(false); try { recRef.current?.stop(); } catch {} };
+  const triggerSpin = () => {
+    setSpinClass("");
+    setTimeout(() => {
+      const c = spinDir.current === 1 ? "spin-cw" : "spin-ccw";
+      setSpinClass(c);
+      spinDir.current *= -1;
+    }, 10);
+  };
+  const startMic = () => {
+    const w = window as any;
+    const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
+    if (!SR) return;
+    const rec = new SR();
+    rec.lang = "en-US";
+    rec.interimResults = true;
+    rec.continuous = true;
+    resetVoiceRefs();
+    rec.onresult = (e: any) => {
+      let latest = "";
+      let finalIdx = -1;
+      for (let i = e.results.length - 1; i >= 0; i--) {
+        if (e.results[i].isFinal) { latest = e.results[i][0].transcript; finalIdx = i; break; }
+      }
+      if (latest) sessionTextRef.current = latest.trim();
+      let tail = "";
+      for (let i = finalIdx + 1; i < e.results.length; i++) tail += e.results[i][0].transcript;
+      interimTailRef.current = tail.trim();
+    };
+    rec.onend = () => {
+      if (listeningRef.current) {
+        const chunk = [sessionTextRef.current, interimTailRef.current].filter(Boolean).join(" ").trim();
+        if (chunk) committedRef.current.push(chunk);
+        sessionTextRef.current = "";
+        interimTailRef.current = "";
+        setTimeout(() => { if (listeningRef.current) { try { rec.start(); } catch {} } }, 120);
+        return;
+      }
+      if (finishTimeoutRef.current) { clearTimeout(finishTimeoutRef.current); finishTimeoutRef.current = null; }
+      if (finishingRef.current) { finishingRef.current = false; commitAndReset(); } else { resetVoiceRefs(); }
+      setFinishing(false);
+      setListening(false);
+    };
+    rec.onerror = (e: any) => { if (e && (e.error === "not-allowed" || e.error === "service-not-allowed" || e.error === "audio-capture")) { listeningRef.current = false; finishingRef.current = false; setFinishing(false); setListening(false); } };
+    recRef.current = rec;
+    listeningRef.current = true;
+    setListening(true);
+    triggerSpin();
+    try { rec.start(); } catch {}
+  };
+  const finishMic = () => {
+    if (!listeningRef.current || finishingRef.current) return;
+    listeningRef.current = false;
+    finishingRef.current = true;
+    setFinishing(true);
+    try { recRef.current?.stop(); } catch { finishingRef.current = false; setFinishing(false); setListening(false); commitAndReset(); return; }
+    finishTimeoutRef.current = setTimeout(() => {
+      if (finishingRef.current) { finishingRef.current = false; setFinishing(false); setListening(false); commitAndReset(); }
+    }, 2500);
+  };
+  const cancelMic = () => {
+    if (!listeningRef.current) return;
+    listeningRef.current = false;
+    finishingRef.current = false;
+    try { recRef.current?.stop(); } catch {}
+    resetVoiceRefs();
+    setFinishing(false);
+    setListening(false);
+  };
+  const toggleMic = () => { if (listeningRef.current) finishMic(); else startMic(); };
+  const toggleUpload = (e: any) => { e.preventDefault(); e.stopPropagation(); setModelMenuOpen(false); triggerSpin(); setMenuOpen((p) => !p); };
+  const pick = async (files: FileList | null) => { if (!files) return; const parsed = await Promise.all(Array.from(files).map(readFileAsAttachment)); setAttachments((p) => [...p, ...parsed.filter((x): x is PendingAttachment => x !== null)]); };
+  const hasText = inputValue.trim().length > 0;
+  const showStop = isSending;
+  const showMic = listening || (!showStop && !hasText);
+  const dropBar = () => {
+    const w = wrapRef.current;
+    if (!w) return;
+    forceDownRef.current = true;
+    offsetRef.current = 0;
+    w.style.setProperty("transition", "bottom .3s cubic-bezier(.22,.61,.36,1)", "important");
+    w.style.bottom = "0px";
+  };
+  const cancelPendingDrop = () => {
+    if (pendingDropRef.current) { window.removeEventListener("quix-msg-scroll-done", pendingDropRef.current); pendingDropRef.current = null; }
+    if (dropTimeoutRef.current) { clearTimeout(dropTimeoutRef.current); dropTimeoutRef.current = null; }
+  };
+  const finishDrop = () => { cancelPendingDrop(); if (taRef.current) taRef.current.blur(); dropBar(); };
+  const pickModel = (id: string) => { if (isGuest && id !== "thinking") { setModelMenuOpen(false); useUIStore.getState().openAuth(); return; } setActiveModel(id); setModelMenuOpen(false); taRef.current?.blur(); };
+  const send = () => {
+    const text = inputValue.trim();
+    if (!text) return;
+    stopMic();
+    if (attachments.length === 0 && !text) return;
+    onSend?.(text, attachments);
+    setInputValue("");
+    setAttachments([]);
+    if (taRef.current) taRef.current.style.height = "40px";
+    const kbOpen = offsetRef.current > 0;
+    if (!kbOpen) { finishDrop(); return; }
+    const listener = () => finishDrop();
+    pendingDropRef.current = listener;
+    window.addEventListener("quix-msg-scroll-done", listener);
+    dropTimeoutRef.current = setTimeout(finishDrop, 400);
+  };
+  const stop = () => { abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
+  const mainAction = () => { if (showStop) return stop(); if (finishing) return; if (listening) return finishMic(); if (hasText) return send(); return toggleMic(); };
+  const sendIconKey = showStop ? "stop" : finishing ? "finishing" : listening ? "confirm" : showMic ? "mic" : "arrow";
+
+  return (
+    <>
+      <style>{ibCSS}</style>
+      <style>{ibFastCSS}</style>
+      <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
+      <input type="file" ref={imgRef} accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
+      <div className="input-wrapper" ref={wrapRef} style={{ bottom: 0 }}>
+        <div className={`input-bar ${listening ? "listening" : ""}`}>
+          {!isDeepThink && attachments.length > 0 && (<div className="attach-row">{attachments.map((a) => (<div className="attach-chip" key={a.id}>{a.kind === "image" && a.previewUrl ? <img className="attach-thumb" src={a.previewUrl} alt={a.name} /> : null}<span>{a.name}</span><button className="attach-remove" onClick={() => setAttachments((p) => p.filter((x) => x.id !== a.id))}>×</button></div>))}</div>)}
+          {listening ? (
+            <div className="voice-wave" aria-hidden="true">
+              {Array.from({ length: WAVE_BARS }).map((_, i) => (<span key={i} style={{ animationDelay: `${(i % 8) * 0.09}s` }} />))}
+            </div>
+          ) : (
+            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research..." : "Ask Quix..."} rows={1} value={inputValue} onFocus={() => { cancelPendingDrop(); forceDownRef.current = false; if (wrapRef.current) wrapRef.current.style.removeProperty("transition"); }} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} />
+          )}
+          <div className="action-row">
+            <div className="action-left">
+              {!isDeepThink && (
+                <div style={{ position: "relative" }}>
+                  <button type="button" className={`plus-btn ${spinClass}`} onClick={listening ? cancelMic : toggleUpload} onMouseDown={prevent} onTouchStart={prevent} disabled={finishing} aria-label={listening ? "Cancel voice input" : "Upload options"}>
+                    <span className="morph-icon" key={listening ? "cancel" : "plus"}>
+                      {listening ? (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>) : (<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>)}
+                    </span>
+                  </button>
+                  <div className={`pop-menu ${menuOpen ? "show" : ""}`} style={{ width: 180 }}>
+                    <div className="upload-opt" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); fileRef.current?.click(); }} onMouseDown={prevent}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><polyline points="14 2 14 8 20 8" /></svg>Upload file</div>
+                    <div className="upload-opt" onClick={(e) => { e.stopPropagation(); setMenuOpen(false); imgRef.current?.click(); }} onMouseDown={prevent}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>Upload image</div>
+                    <div className={`upload-opt ${canvasOn ? "on" : ""}`} onClick={(e) => { e.stopPropagation(); setCanvasOn(!canvasOn); setMenuOpen(false); }} onMouseDown={prevent}><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{canvasOn && (<span className="cv-cross" onClick={(e) => { e.stopPropagation(); setCanvasOn(false); setMenuOpen(false); }}>×</span>)}</div>
+                  </div>
+                </div>
+              )}
+              {!listening && (
+                <div style={{ position: "relative" }}>
+                  <button type="button" className={`model-btn ${modelMenuOpen ? "open" : ""}`} onClick={(e) => { e.stopPropagation(); setMenuOpen(false); setModelMenuOpen((p) => !p); taRef.current?.blur(); }} onMouseDown={prevent} onTouchStart={prevent}>
+                    <span>{MODELS[activeModel]?.name ?? "Quix 3 Flash"}</span>
+                    <span className="mchev"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9" /></svg></span>
+                  </button>
+                  <div className={`pop-menu ${modelMenuOpen ? "show" : ""}`}>
+                    {CHAT_MODELS.map((id) => {
+                      const locked = isGuest && id !== "thinking";
+                      return (
+                        <div key={id} className={`model-item ${locked ? "locked" : ""}`} onClick={(e) => { e.stopPropagation(); if (locked) return; pickModel(id); }}>
+                          {activeModel === id && !locked ? (<svg viewBox="0 0 24 24" fill="none" className="model-check" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>) : locked ? (<span dangerouslySetInnerHTML={{ __html: lockSvg }} />) : (<div style={{ width: 15, flexShrink: 0 }} />)}
+                          <div className="model-item-content">
+                            <span className="model-title">{MODELS[id].name}{id === "deepthink" && <span className="beta-tag"> Beta</span>}{locked && <span style={{ color: "#ff8080", fontSize: 10, marginLeft: 4 }}>Sign in</span>}</span>
+                            <span className="model-desc">{MODELS[id].desc}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="action-right">
+              {canvasOn && !isDeepThink && !listening && (<button type="button" className="cv-pill" onClick={() => openFilesList()}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{fileCount > 0 ? ` · ${fileCount}` : ""}</button>)}
+              <button type="button" className={`send-btn ${showStop ? "stop" : ""} ${finishing ? "finishing" : ""} ${showMic ? (listening ? "mic listening" : "mic") : ""}`} onClick={mainAction} disabled={finishing} aria-label={showStop ? "Stop" : finishing ? "Finishing up" : listening ? "Confirm voice input" : hasText ? "Send" : "Voice input"}>
+                <span className="morph-icon" key={sendIconKey}>
+                  {showStop ? (<svg width="15" height="15" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>) : finishing ? (<svg width="16" height="16" viewBox="0 0 24 24" className="spin-loader"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="42 100" /></svg>) : listening ? (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>) : showMic ? (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="10" width="2.6" height="4" rx="1.3" /><rect x="9.2" y="6" width="2.6" height="12" rx="1.3" /><rect x="14.4" y="8" width="2.6" height="8" rx="1.3" /><rect x="19.6" y="10.5" width="2.6" height="3" rx="1.3" /></svg>) : (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>)}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
