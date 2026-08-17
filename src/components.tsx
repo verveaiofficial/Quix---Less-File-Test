@@ -4,7 +4,6 @@ import { createPortal } from "react-dom";
 import { SourceItem, ChatMessage, AttachmentMeta, useChatStore, useAuthStore, insertMessage, useStreamText, copyText, rid } from "./core";
 import { ORB_COLORS, qtsCSS, searchIconSvg, umCSS, amCSS, mlCSS } from "./styles";
 
-// FIX #2 — stable store accessor (no subscription, so memo works)
 const updateMsg = (id: string, patch: any) => useChatStore.getState().updateMessage(id, patch);
 
 // ================= CANVAS =================
@@ -218,12 +217,13 @@ function SourcesPanel({ sources, onClose }: { sources: SourceItem[]; onClose: ()
   </>), document.body);
 }
 
-export const ThinkingStatus = React.memo(function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }: { done: boolean; finished?: boolean; sources?: SourceItem[]; thoughts?: string; thinkTime?: number }) {
+// NOT memoized — must always re-render so the thinking process streams in automatically
+export function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }: { done: boolean; finished?: boolean; sources?: SourceItem[]; thoughts?: string; thinkTime?: number }) {
   const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(true);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   useEffect(() => { if (done) return; const t = setInterval(() => setElapsed((p) => p + 1), 1000); return () => clearInterval(t); }, [done]);
-  useEffect(() => { if (done) setExpanded(false); }, [done]);
+  useEffect(() => { if (done) setExpanded(false); else setExpanded(true); }, [done]);
   const finalTime = thinkTime != null ? thinkTime : elapsed;
   const thoughtParas = (thoughts || "").split(/\n+/).map((t) => t.trim()).filter(Boolean);
   const found = sources?.length ?? 0;
@@ -270,7 +270,7 @@ export const ThinkingStatus = React.memo(function ThinkingStatus({ done, finishe
       )}
     </div>
   );
-});
+}
 
 // ================= UI (MESSAGES) =================
 function smoothScrollToEl(c: HTMLElement, el: HTMLElement, gap: number, duration = 220) {
@@ -308,10 +308,8 @@ function smoothScrollToEl(c: HTMLElement, el: HTMLElement, gap: number, duration
   anyC._fsRaf = requestAnimationFrame(step);
 }
 
-// FIX #2 — memoized so unchanged messages never re-render
 export const UserMessage = React.memo(function UserMessage({ content, attachments, mid }: { content: string; attachments?: AttachmentMeta[]; mid: string }) { return (<div className="um-wrap" data-mid={mid}><style>{umCSS}</style><div className="message-user">{attachments && attachments.length > 0 && (<div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: content ? 10 : 0 }}>{attachments.map((a, i) => (<div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "rgba(255,255,255,0.7)", maxWidth: 160 }}>{a.kind === "image" && a.previewUrl ? (<img src={a.previewUrl} alt={a.name} style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover" }} />) : null}<span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span></div>))}</div>)}{content}</div><div className="um-actions"><button onClick={() => copyText(content)}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg></button></div></div>); });
 
-// FIX #2 + #5 — memoized, no whole-store subscription, batched stream ticks (30ms/6 chars)
 export const AiMessage = React.memo(function AiMessage({ message, mid }: { message: ChatMessage & { thinkTime?: number }; mid: string }) {
   const canvasOn = useCanvasStore((s) => s.on);
   const hasCode = message.content.includes("```");
@@ -320,7 +318,7 @@ export const AiMessage = React.memo(function AiMessage({ message, mid }: { messa
   const isDone = message.status === "done" || message.status === "error";
   const isThinkingModel = message.model === "thinking" || message.model === "deepthink";
   useEffect(() => { if (message.status !== "streaming") return; if (!message.doneStreaming) return; if (hasCode) { updateMsg(message.id, { status: "done" }); useChatStore.getState().setIsSending(false); const { currentChatId } = useChatStore.getState(); const session = useAuthStore.getState().session; if (currentChatId && session) insertMessage(currentChatId, { ...message, status: "done" }); return; } if (shown.length >= message.content.length) { const t = setTimeout(() => { updateMsg(message.id, { status: "done" }); useChatStore.getState().setIsSending(false); const { currentChatId } = useChatStore.getState(); const session = useAuthStore.getState().session; if (currentChatId && session) insertMessage(currentChatId, { ...message, status: "done" }); }, 150); return () => clearTimeout(t); } }, [message, shown, hasCode]);
-  useEffect(() => { const onStop = () => { const cur = useChatStore.getState().messages.find((m) => m.id === message.id); if (cur && cur.status === "streaming") { updateMsg(message.id, { content: shown, status: "done", doneStreaming: true }); useChatStore.getState().setIsSending(false); } }; window.addEventListener("quix-stop", onStop); return () => window.removeEventListener("quix-stop", onStop); }, [shown, message.id]);
+  useEffect(() => { const onStop =() => { const cur = useChatStore.getState().messages.find((m) => m.id === message.id); if (cur && cur.status === "streaming") { updateMsg(message.id, { content: shown, status: "done", doneStreaming: true }); useChatStore.getState().setIsSending(false); } }; window.addEventListener("quix-stop", onStop); return () => window.removeEventListener("quix-stop", onStop); }, [shown, message.id]);
   return (<div className="message-ai" data-mid={mid}><style>{amCSS}</style><div className="ai-content">{isThinkingModel ? (<ThinkingStatus done={message.status !== "thinking"} finished={isDone} sources={message.sources} thoughts={message.thoughts} thinkTime={message.thinkTime} />) : (<BubbleIndicator dimmed={isDone} />)}<div style={{ width: "100%", maxWidth: 640 }}>{shouldStream && <MarkdownText text={shown} mid={mid} canvas={canvasOn} sources={message.sources} />}{(message.status === "done" || message.status === "error") && <MarkdownText text={message.content} mid={mid} canvas={canvasOn} sources={message.sources} />}</div></div>{message.status === "done" && (<div className="msg-actions"><button className={message.feedback === "up" ? "active" : ""} onClick={() => updateMsg(message.id, { feedback: message.feedback === "up" ? undefined : "up" })}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 10v12" /><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" /></svg></button><button className={message.feedback === "down" ? "active" : ""} onClick={() => updateMsg(message.id, { feedback: message.feedback === "down" ? undefined : "down" })}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 14V2" /><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" /></svg></button><button onClick={() => copyText(message.content)}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg></button></div>)}</div>);
 });
 
