@@ -367,6 +367,8 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const interimTailRef = useRef("");
   const committedRef = useRef<string[]>([]);
   const finishTimeoutRef = useRef<any>(null);
+  const dropTimeoutRef = useRef<any>(null);
+  const pendingDropRef = useRef<(() => void) | null>(null);
   const spinDir = useRef(1);
   const offsetRef = useRef(0);
   const forceDownRef = useRef(false);
@@ -410,7 +412,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   }, []);
 
   useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
-  useEffect(() => { return () => { listeningRef.current = false; try { recRef.current?.stop(); } catch {} if (finishTimeoutRef.current) clearTimeout(finishTimeoutRef.current); }; }, []);
+  useEffect(() => { return () => { listeningRef.current = false; try { recRef.current?.stop(); } catch {} if (finishTimeoutRef.current) clearTimeout(finishTimeoutRef.current); if (dropTimeoutRef.current) clearTimeout(dropTimeoutRef.current); if (pendingDropRef.current) { window.removeEventListener("quix-msg-scroll-done", pendingDropRef.current); pendingDropRef.current = null; } }; }, []);
 
   const prevent = (e: any) => e.preventDefault();
 
@@ -525,8 +527,35 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
     w.style.bottom = "0px";
   };
 
+  const cancelPendingDrop = () => {
+    if (pendingDropRef.current) { window.removeEventListener("quix-msg-scroll-done", pendingDropRef.current); pendingDropRef.current = null; }
+    if (dropTimeoutRef.current) { clearTimeout(dropTimeoutRef.current); dropTimeoutRef.current = null; }
+  };
+
+  const finishDrop = () => {
+    cancelPendingDrop();
+    if (taRef.current) taRef.current.blur();
+    dropBar();
+  };
+
   const pickModel = (id: string) => { if (isGuest && id !== "thinking") { setModelMenuOpen(false); useUIStore.getState().openAuth(); return; } setActiveModel(id); setModelMenuOpen(false); taRef.current?.blur(); };
-  const send = () => { const text = inputValue.trim(); if (!text) return; stopMic(); if (attachments.length === 0 && !text) return; onSend?.(text, attachments); setInputValue(""); setAttachments([]); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } dropBar(); };
+  const send = () => {
+    const text = inputValue.trim();
+    if (!text) return;
+    stopMic();
+    if (attachments.length === 0 && !text) return;
+    onSend?.(text, attachments);
+    setInputValue("");
+    setAttachments([]);
+    if (taRef.current) taRef.current.style.height = "40px";
+
+    const kbOpen = offsetRef.current > 0;
+    if (!kbOpen) { finishDrop(); return; }
+    const listener = () => finishDrop();
+    pendingDropRef.current = listener;
+    window.addEventListener("quix-msg-scroll-done", listener);
+    dropTimeoutRef.current = setTimeout(finishDrop, 400);
+  };
   const stop = () => { abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
   const mainAction = () => { if (showStop) return stop(); if (finishing) return; if (listening) return finishMic(); if (hasText) return send(); return toggleMic(); };
 
@@ -546,7 +575,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
               {Array.from({ length: WAVE_BARS }).map((_, i) => (<span key={i} style={{ animationDelay: `${(i % 8) * 0.09}s` }} />))}
             </div>
           ) : (
-            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research..." : "Ask Quix..."} rows={1} value={inputValue} onFocus={() => { forceDownRef.current = false; if (wrapRef.current) wrapRef.current.style.removeProperty("transition"); }} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} />
+            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research..." : "Ask Quix..."} rows={1} value={inputValue} onFocus={() => { cancelPendingDrop(); forceDownRef.current = false; if (wrapRef.current) wrapRef.current.style.removeProperty("transition"); }} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} />
           )}
           <div className="action-row">
             <div className="action-left">
