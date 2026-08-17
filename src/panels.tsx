@@ -11,32 +11,27 @@ export const usePinStore = create<any>((set, get) => ({
 export const useImagineStore = create<any>((set) => ({ nonce: 0, bump: () => set((s: any) => ({ nonce: s.nonce + 1 })) }));
 export const useUsagePageStore = create<any>((set) => ({ open: false, openPage: () => set({ open: true }), closePage: () => set({ open: false }) }));
 
-// RIPPLE (replaces shimmer) — GPU-friendly transform/opacity only
+// RIPPLE — CSS keyframe, starts instantly, full cover
+const rippleCSS = `.qx-ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.45);opacity:.6;transform:scale(0);animation:qx-rip .55s ease-out forwards;pointer-events:none}@keyframes qx-rip{to{transform:scale(1);opacity:0}}`;
 export function shimmer(e: any) {
   const el = e?.currentTarget as HTMLElement;
   if (!el) return;
   const rect = el.getBoundingClientRect();
-  const d = Math.max(rect.width, rect.height) * 2;
+  const d = Math.max(rect.width, rect.height) * 2.5;
   const span = document.createElement("span");
-  span.style.position = "absolute";
-  span.style.borderRadius = "50%";
-  span.style.background = "rgba(255,255,255,.35)";
+  span.className = "qx-ripple";
   span.style.width = span.style.height = d + "px";
-  const cx = e.clientX || rect.left + rect.width / 2;
-  const cy = e.clientY || rect.top + rect.height / 2;
+  const cx = e && e.clientX ? e.clientX : rect.left + rect.width / 2;
+  const cy = e && e.clientY ? e.clientY : rect.top + rect.height / 2;
   span.style.left = cx - rect.left - d / 2 + "px";
   span.style.top = cy - rect.top - d / 2 + "px";
-  span.style.pointerEvents = "none";
-  span.style.transform = "scale(0)";
-  span.style.opacity = "0.5";
   if (!el.style.position || el.style.position === "static") el.style.position = "relative";
   const prevOver = el.style.overflow;
   el.style.overflow = "hidden";
+  span.addEventListener("animationend", () => { span.remove(); el.style.overflow = prevOver; });
   el.appendChild(span);
-  const anim = span.animate([{ transform: "scale(0)", opacity: 0.5 }, { transform: "scale(1)", opacity: 0 }], { duration: 500, easing: "cubic-bezier(.22,.61,.36,1)" });
-  anim.onfinish = () => { span.remove(); el.style.overflow = prevOver; };
 }
-export function shimmerThen(e: any, fn: () => void) { shimmer(e); setTimeout(fn, 250); }
+export function shimmerThen(e: any, fn: () => void) { shimmer(e); setTimeout(fn, 180); }
 
 function timeAgo(d: string): string { const diff = Math.max(0, Date.now() - new Date(d).getTime()); const m = Math.floor(diff / 60000); if (m < 1) return "Just now"; if (m < 60) return `${m}m ago`; const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`; return `${Math.floor(h / 24)}d ago`; }
 function msToReset(): number { const n = new Date(); const next = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate() + 1, 0, 0, 0, 0)); return next.getTime() - n.getTime(); }
@@ -63,6 +58,7 @@ export function ChatHeader({ hidden }: { hidden?: boolean }) {
   return (
     <>
       <style>{hdCSS}</style>
+      <style>{rippleCSS}</style>
       <div id="chat-header">
         <div style={{ width: 36, flexShrink: 0 }} />
         <div className="header-center"><div className="view-toggle"><button className={`view-btn ${viewMode === "chat" ? "active" : ""}`} onClick={() => setViewMode("chat")}>Chat</button><button className={`view-btn ${viewMode === "imagine" ? "active" : ""}`} onClick={() => setViewMode("imagine")}>Imagine</button></div></div>
@@ -211,9 +207,9 @@ export function UsagePage() {
           </div>
           <div className="set-section">
             <div className="set-label">Today's usage by model</div>
-            {CHAT_MODELS.map((mdl) => { const lim = limitFor(mdl); const used = usage[mdl] ?? 0; const rem = lim < 0 ? Infinity : Math.max(0, lim - used); return (<div className="limit-row" key={mdl}><div className="limit-top"><span>{MODELS[mdl].name}</span><span>{lim < 0 ? "Unlimited" : lim === 0 ? (session ? "0 left" : "Sign in required") : `${used}/${lim} used · ${rem} left`}</span></div><div className="limit-bar"><div className="limit-fill" style={{ width: lim < 0 ? 100 : lim === 0 ? 0 : `${Math.min(100, (used / lim) * 100)}%` }} /></div></div>); })}
+            {CHAT_MODELS.map((mdl) => { const lim = limitFor(mdl); const used = usage[mdl] ?? 0; return (<div className="limit-row" key={mdl}><div className="limit-top"><span>{MODELS[mdl].name}</span><span>{lim < 0 ? "Unlimited" : lim === 0 ? "Sign in required" : `${used}/${lim}`}</span></div><div className="limit-bar"><div className="limit-fill" style={{ width: lim < 0 ? 100 : lim === 0 ? 0 : `${Math.min(100, (used / lim) * 100)}%` }} /></div></div>); })}
           </div>
-          <div className="mem-empty">Usage counts reset automatically at midnight UTC.</div>
+          <div className="mem-empty">Daily usage reset at midnight UTC.</div>
         </div>
       </div>
     </>
@@ -227,8 +223,6 @@ export function SettingsPage() {
   const { resetChat } = useChatStore();
   const memories = useMemoryStore((s) => s.memories);
   const loadFor = useMemoryStore((s) => s.loadFor);
-  const usage = useUsageStore((s) => s.usage);
-  const limitFor = useUsageStore((s) => s.limitFor);
   const openUsagePage = useUsagePageStore((s) => s.openPage);
   const fileRef = useRef<HTMLInputElement>(null);
   const uid = session?.user?.id ?? null;
@@ -281,8 +275,6 @@ export function SettingsPage() {
             <input className="set-field" type="email" placeholder="Email" value={profile.email} onChange={(e) => setProfile({ email: e.target.value })} />
           </div>
           <div className="set-section">
-            <div className="set-label">Daily message limits</div>
-            {CHAT_MODELS.map((m) => { const lim = limitFor(m); const used = usage[m] ?? 0; const rem = lim < 0 ? Infinity : Math.max(0, lim - used); return (<div className="limit-row" key={m}><div className="limit-top"><span>{MODELS[m].name}</span><span>{lim < 0 ? "Unlimited" : lim === 0 ? "Sign in required" : `${rem}/${lim} left`}</span></div><div className="limit-bar"><div className="limit-fill" style={{ width: lim < 0 ? 100 : lim === 0 ? 0 : `${(rem / lim) * 100}%` }} /></div></div>); })}
             <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openUsagePage())}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
@@ -290,7 +282,6 @@ export function SettingsPage() {
               </div>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
             </button>
-            <div className="mem-empty">Limits reset at midnight UTC.</div>
           </div>
           {uid && (
             <div className="set-section">
