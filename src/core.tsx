@@ -105,4 +105,37 @@ const usageKey = (uid: string | null) => "quixusage" + dayKey() + "_" + (uid || 
 function readUsageFor(uid: string | null): Record { try { return JSON.parse(localStorage.getItem(usageKey(uid)) || "{}"); } catch { return {}; } }
 function guestLimit(m: string): number { return m === "thinking" ? GUESTTHINKINGLIMIT : 0; }
 function limitForSession(m: string): number { const sess = useAuthStore.getState().session; return sess ? (LIMITS[m] ?? 30) : guestLimit(m); }
-function computeLeft(used: Record): Record { const out: Record = {}; CHAT_MODELS.forEach((m) => { const lim = limitForSession(m); out[m] = lim  | null> { if (!sb || !uid) return null; try { const { data, error } = await sb.from("usage").select("counts").eq("user_id", uid).eq("day", dayKey()).maybeSingle(); if (error) return null; return data && data.counts ? (data.counts as Record) :
+function computeLeft(used: Record): Record { const out: Record = {}; CHAT_MODELS.forEach((m) => { const lim = limitForSession(m); out[m] = lim  | null> { if (!sb || !uid) return null; try { const { data, error } = await sb.from("usage").select("counts").eq("user_id", uid).eq("day", dayKey()).maybeSingle(); if (error) return null; return data && data.counts ? (data.counts as Record) :{}; } catch { return null; } }
+async function saveUsageToDB(uid: string, counts: Record<string, number>) { if (!sb || !uid) return; try { await sb.from("usage").upsert({ user_id: uid, day: dayKey(), counts, updated_at: new Date().toISOString() }, { onConflict: "user_id,day" }); } catch {} }
+
+export const useUsageStore = create<any>((set, get) => ({
+  used: readUsageFor(null),
+  usage: computeLeft(readUsageFor(null)),
+  user: null as string | null,
+  setUser: (uid: string | null) => {
+    const local = readUsageFor(uid);
+    set({ user: uid, used: local, usage: computeLeft(local) });
+    if (uid) { loadUsageFromDB(uid).then((counts) => { if (counts && get().user === uid) set({ used: counts, usage: computeLeft(counts) }); }); }
+  },
+  limitFor: (m: string) => limitForSession(m),
+  remaining: (m: string) => { const lim = get().limitFor(m); if (lim < 0) return Infinity; const left = get().usage[m]; return left == null ? lim : left; },
+  consume: (m: string) => {
+    const uid = get().user;
+    const base = { ...get().used };
+    const u = { ...base, [m]: (base[m] ?? 0) + 1 };
+    if (uid) { saveUsageToDB(uid, u); } else { try { localStorage.setItem(usageKey(uid), JSON.stringify(u)); } catch {} }
+    set({ used: u, usage: computeLeft(u) });
+  },
+  resolve: (m: string) => {
+    if (get().remaining(m) > 0) return m;
+    const sess = useAuthStore.getState().session;
+    if (!sess) return null;
+    for (const f of FALLBACK[m] || []) if (get().remaining(f) > 0) return f;
+    return null;
+  },
+}));
+
+export const useMemoryStore = create<any>((set, get) => ({
+  memories: [], loadedFor: null,
+  reset: () => set({ memories: [], loadedFor: null }),
+  loadFor: async (uid: string) => { if (get().loadedFor === uid) return; if (!sb) { set({ memories: [], loadedFor: uid }); return; } const { data } = await sb.from("memories").select("*").eq("user_id", uid).order("created_at", { ascending: true
