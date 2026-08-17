@@ -177,7 +177,7 @@ function escapeHtml(s: string) { return s.replace(/&/g, "&amp;").replace(/</g, "
 function inlineMd(s: string) { return s.replace(/\[\[CITE\|([^|]+)\|([^\]]+)\]\]/g, '<a style="display:inline-block;padding:2px 8px;border-radius:8px;background:rgba(255,255,255,.09);color:#9ba1a6;font-size:12px;text-decoration:none;margin:0 3px;vertical-align:middle;line-height:1.4;white-space:nowrap" href="$2" target="_blank" rel="noreferrer">$1</a>').replace(/`([^`]+)`/g, '<code class="md-code">$1</code>').replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>").replace(/\*([^*]+)\*/g, "<em>$1</em>").replace(/\[([^\]]+)\]\((https?:[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>'); }
 function citeReplace(text: string, sources: SourceItem[]): string {
   if (!sources || !sources.length) return text;
-  return text.replace(/\((\d+(?:\s*,\s*\d+)*)\)/g, (_m, grp: string) => {
+  return text.replace(/[\[\(](\d+(?:\s*,\s*\d+)*)[\)\]]/g, (_m, grp: string) => {
     const nums = grp.split(",").map((x) => parseInt(x.trim(), 10)).filter((n) => !isNaN(n));
     const byDomain: { domain: string; url: string; count: number }[] = [];
     nums.forEach((n) => {
