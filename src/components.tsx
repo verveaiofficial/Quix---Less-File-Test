@@ -270,7 +270,7 @@ export function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }:
 }
 
 // ================= UI (MESSAGES) =================
-function smoothScrollToEl(c: HTMLElement, el: HTMLElement, gap: number, duration = 300) {
+function smoothScrollToEl(c: HTMLElement, el: HTMLElement, gap: number, duration = 220) {
   const anyC = c as any;
   if (anyC._fsRaf) cancelAnimationFrame(anyC._fsRaf);
   c.style.scrollBehavior = "auto";
@@ -282,7 +282,8 @@ function smoothScrollToEl(c: HTMLElement, el: HTMLElement, gap: number, duration
   const start = c.scrollTop;
   const target = measure();
   const travel = target - start;
-  if (Math.abs(travel) < 2) { c.scrollTop = target; return; }
+  const done = () => { window.dispatchEvent(new Event("quix-msg-scroll-done")); };
+  if (Math.abs(travel) < 2) { c.scrollTop = target; done(); return; }
   const t0 = performance.now();
   const ease = (t: number) => 1 - Math.pow(1 - t, 3);
   const step = (now: number) => {
@@ -291,17 +292,12 @@ function smoothScrollToEl(c: HTMLElement, el: HTMLElement, gap: number, duration
     if (p < 1) { anyC._fsRaf = requestAnimationFrame(step); }
     else {
       anyC._fsRaf = null;
+      done();
       const final = measure();
       const off = final - c.scrollTop;
       if (Math.abs(off) > 2) {
-        const c0 = c.scrollTop;
-        const t1 = performance.now();
-        const d = 140;
-        const fix = (nw: number) => {
-          const q = Math.min(1, (nw - t1) / d);
-          c.scrollTop = c0 + off * (1 - Math.pow(1 - q, 2));
-          if (q < 1) anyC._fsRaf = requestAnimationFrame(fix); else anyC._fsRaf = null;
-        };
+        const c0 = c.scrollTop; const t1 = performance.now(); const d = 120;
+        const fix = (nw: number) => { const q = Math.min(1, (nw - t1) / d); c.scrollTop = c0 + off * (1 - Math.pow(1 - q, 2)); if (q < 1) anyC._fsRaf = requestAnimationFrame(fix); else anyC._fsRaf = null; };
         anyC._fsRaf = requestAnimationFrame(fix);
       }
     }
@@ -355,7 +351,7 @@ export function MessageList() {
       if (need > 1) container.style.paddingBottom = `${cur + need}px`;
       else if (cur < 110) container.style.paddingBottom = "110px";
 
-      smoothScrollToEl(c, el, gap, 320);
+      smoothScrollToEl(c, el, gap, 220);
     }));
   }, [messages]);
 
