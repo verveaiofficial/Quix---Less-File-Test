@@ -19,6 +19,9 @@ const CHAIN: Record<string, string[]> = {
   coder: ["coder", "flash", "lite"],
 };
 
+// Makes settings buttons use the same 12px gap as the Name/Email fields
+const settingsFixCSS = `#settings-screen .new-btn{margin-bottom:0}`;
+
 export default function App() {
   const [loading, setLoading] = useState(true);
   const { activeModel, addMessage, updateMessage, setIsSending, setActiveModel } = useChatStore();
@@ -55,12 +58,10 @@ export default function App() {
     const aiId = rid();
     if (startModel !== activeModel) setActiveModel(startModel);
 
-    // FIX #1 — OPTIMISTIC RENDER: show both bubbles instantly, before any await
     addMessage(userMessage);
     addMessage({ id: aiId, role: "ai", model: startModel, content: "", thoughts: "", createdAt: Date.now(), status: "thinking" } as any);
     setIsSending(true);
 
-    // Persist to DB AFTER rendering, fire-and-forget (never blocks the UI)
     if (sessNow) {
       (async () => {
         let chatId = useChatStore.getState().currentChatId;
@@ -137,6 +138,7 @@ export default function App() {
     <div style={{ height: "100dvh", background: "#000", color: "#fff", overflow: "hidden", position: "relative" }}>
       <style>{globalCSS}</style>
       <style>{layerCSS}</style>
+      <style>{settingsFixCSS}</style>
       <ChatHeader hidden={false} />
       <MenuDrawer hidden={false} />
       <AuthScreen />
