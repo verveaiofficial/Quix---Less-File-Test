@@ -10,8 +10,8 @@ export const usePinStore = create<any>((set, get) => ({
 }));
 export const useImagineStore = create<any>((set) => ({ nonce: 0, bump: () => set((s: any) => ({ nonce: s.nonce + 1 })) }));
 export const useUsagePageStore = create<any>((set) => ({ open: false, openPage: () => set({ open: true }), closePage: () => set({ open: false }) }));
+export const useScreenPageStore = create<any>((set) => ({ open: false, openPage: () => set({ open: true }), closePage: () => set({ open: false }) }));
 
-// RIPPLE — CSS keyframe, starts instantly, full cover
 const rippleCSS = `.qx-ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.45);opacity:.6;transform:scale(0);animation:qx-rip .55s ease-out forwards;pointer-events:none}@keyframes qx-rip{to{transform:scale(1);opacity:0}}`;
 export function shimmer(e: any) {
   const el = e?.currentTarget as HTMLElement;
@@ -38,6 +38,7 @@ function msToReset(): number { const n = new Date(); const next = new Date(Date.
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
 const usCSS = `#usage-screen{position:fixed;inset:0;z-index:160;background:#050508;display:flex;flex-direction:column;opacity:0;pointer-events:none;transform:translateY(30px);transition:opacity .35s ease,transform .35s ease}#usage-screen.show{opacity:1;pointer-events:all;transform:translateY(0)}.usage-timer{display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px 16px}.usage-timer-val{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:#fff;letter-spacing:.06em}`;
+const dsCSS = `#display-screen{position:fixed;inset:0;z-index:160;background:#050508;display:flex;flex-direction:column;opacity:0;pointer-events:none;transform:translateY(30px);transition:opacity .35s ease,transform .35s ease}#display-screen.show{opacity:1;pointer-events:all;transform:translateY(0)}`;
 
 export function ChatHeader({ hidden }: { hidden?: boolean }) {
   const { chatTitle, setChatTitle, currentChatId, resetChat } = useChatStore();
@@ -117,7 +118,7 @@ export function MenuDrawer({ hidden }: { hidden?: boolean }) {
             )}
             <div className="profile-row">
               <button className="signin-btn shimmer-btn" style={{ flex: 1 }} onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>Your profile</button>
-              <button className="settings-circle shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })} aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82v.01a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l.06-.06a2 2 0 1 1 2.83-2.83l-.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
+              <button className="settings-circle shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })} aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82v-.01a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l.06-.06a2 2 0 1 1 2.83-2.83l-.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
             </div>
           </div>
         </div>
@@ -216,14 +217,41 @@ export function UsagePage() {
   );
 }
 
+export function ScreenSizePage() {
+  const open = useScreenPageStore((s) => s.open);
+  const close = useScreenPageStore((s) => s.closePage);
+  const { fontScale, setFontScale } = useUIStore();
+  return (
+    <>
+      <style>{stCSS}</style>
+      <style>{dsCSS}</style>
+      <div id="display-screen" className={open ? "show" : ""}>
+        <div className="set-header"><button className="set-back" onClick={close} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Screen size</div></div>
+        <div className="set-body">
+          <div className="set-section">
+            <div className="set-label">Text size</div>
+            <div className="font-row">
+              <button className="font-btn" onClick={() => setFontScale(fontScale - 0.05)}>−</button>
+              <span className="font-val">{Math.round(fontScale * 100)}%</span>
+              <button className="font-btn" onClick={() => setFontScale(fontScale + 0.05)}>+</button>
+            </div>
+            <div className="mem-empty">Applies to the whole app instantly.</div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export function SettingsPage() {
-  const { settingsOpen, closeSettings, fontScale, setFontScale, openMemories } = useUIStore();
+  const { settingsOpen, closeSettings, openMemories } = useUIStore();
   const { profile, setProfile } = useProfileStore();
   const { session, signOut } = useAuthStore();
   const { resetChat } = useChatStore();
   const memories = useMemoryStore((s) => s.memories);
   const loadFor = useMemoryStore((s) => s.loadFor);
   const openUsagePage = useUsagePageStore((s) => s.openPage);
+  const openScreenPage = useScreenPageStore((s) => s.openPage);
   const fileRef = useRef<HTMLInputElement>(null);
   const uid = session?.user?.id ?? null;
   useEffect(() => { if (uid) loadFor(uid); }, [uid, loadFor]);
@@ -275,6 +303,7 @@ export function SettingsPage() {
             <input className="set-field" type="email" placeholder="Email" value={profile.email} onChange={(e) => setProfile({ email: e.target.value })} />
           </div>
           <div className="set-section">
+            <div className="set-label">Settings</div>
             <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openUsagePage())}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
@@ -282,10 +311,7 @@ export function SettingsPage() {
               </div>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
             </button>
-          </div>
-          {uid && (
-            <div className="set-section">
-              <div className="set-label">Memory</div>
+            {uid && (
               <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openMemories())}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1.3.5 2.6 1.5 3.5.8.8 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></svg>
@@ -293,21 +319,21 @@ export function SettingsPage() {
                 </div>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
               </button>
-            </div>
-          )}
-          <div className="set-section">
-            <div className="set-label">Screen size</div>
-            <div className="font-row">
-              <button className="font-btn" onClick={() => setFontScale(fontScale - 0.05)}>−</button>
-              <span className="font-val">{Math.round(fontScale * 100)}%</span>
-              <button className="font-btn" onClick={() => setFontScale(fontScale + 0.05)}>+</button>
-            </div>
+            )}
+            <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openScreenPage())}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" /><line x1="12" y1="18" x2="12.01" y2="18" /></svg>
+                Screen size
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
           </div>
           {session && (<div className="set-section"><button className="signout-big" onClick={async () => { await signOut(); resetChat(); }}>Sign out</button></div>)}
           <div className="watermark">Quix · {APP_VERSION}</div>
         </div>
       </div>
       <UsagePage />
+      <ScreenSizePage />
     </>
   );
 }
@@ -618,7 +644,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
     dropTimeoutRef.current = setTimeout(finishDrop, 400);
   };
   const stop = () => { abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
-  const mainAction = () => { if (showStop) return stop(); if (finishing) return; if (listening) return finishMic(); if (hasText) return send(); return toggleMic(); };
+  const mainAction =() => { if (showStop) return stop(); if (finishing) return; if (listening) return finishMic(); if (hasText) return send(); return toggleMic(); };
 
   const sendIconKey = showStop ? "stop" : finishing ? "finishing" : listening ? "confirm" : showMic ? "mic" : "arrow";
 
