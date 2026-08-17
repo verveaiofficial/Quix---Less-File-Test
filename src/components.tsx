@@ -4,6 +4,8 @@ import { createPortal } from "react-dom";
 import { SourceItem, ChatMessage, AttachmentMeta, useChatStore, useAuthStore, insertMessage, useStreamText, copyText, rid } from "./core";
 import { ORB_COLORS, qtsCSS, searchIconSvg, umCSS, amCSS, mlCSS } from "./styles";
 
+const updateMsg = (id: string, patch: any) => useChatStore.getState().updateMessage(id, patch);
+
 // ================= CANVAS =================
 export const useCanvasStore = create<any>((set) => ({
   on: false, open: false, mode: "list" as "list" | "single", selId: null as string | null, overrides: {} as Record<string, string>,
@@ -191,7 +193,7 @@ function citeReplace(text: string, sources: SourceItem[]): string {
 }
 function mdToHtml(src: string): string { const lines = escapeHtml(src).split("\n"); const out: string[] = []; let inUl = false, inOl = false; const close = () => { if (inUl) out.push("</ul>"); if (inOl) out.push("</ol>"); inUl = false; inOl = false; }; for (const line of lines) { const t = line.trim(); if (!t) { close(); out.push('<div class="md-gap"></div>'); continue; } if (/^###\s/.test(t)) { close(); out.push(`<h4>${inlineMd(t.slice(4))}</h4>`); continue; } if (/^##\s/.test(t)) { close(); out.push(`<h3>${inlineMd(t.slice(3))}</h3>`); continue; } if (/^#\s/.test(t)) { close(); out.push(`<h3>${inlineMd(t.slice(2))}</h3>`); continue; } if (/^[-*]\s/.test(t)) { if (!inUl) { close(); out.push("<ul>"); inUl = true; } out.push(`<li>${inlineMd(t.slice(2))}</li>`); continue; } if (/^\d+[.)]\s/.test(t)) { if (!inOl) { close(); out.push("<ol>"); inOl = true; } out.push(`<li>${inlineMd(t.replace(/^\d+[.)]\s/, ""))}</li>`); continue; } close(); out.push(`<div>${inlineMd(t)}</div>`); } close(); return out.join(""); }
 
-export function MarkdownText({ text, mid, canvas, sources }: { text: string; mid: string; canvas: boolean; sources?: SourceItem[] }) { const parts = text.split(/```/); return (<div className="md-wrap">{parts.map((part, i) => { if (i % 2 === 1) { const nl = part.indexOf("\n"); const lang = nl > -1 ? part.slice(0, nl).trim() : ""; const code = nl > -1 ? part.slice(nl + 1) : part; return canvas ? <FileCard key={i} lang={lang || "txt"} code={code} fid={`${mid}-${i}`} num={(i + 1) / 2} /> : <InlineCodeBlock key={i} lang={lang || "code"} code={code} />; } if (!part.trim()) return null; return <div key={i} className="md-text" dangerouslySetInnerHTML={{ __html: mdToHtml(citeReplace(part, sources || [])) }} />; })}</div>); }
+export const MarkdownText = React.memo(function MarkdownText({ text, mid, canvas, sources }: { text: string; mid: string; canvas: boolean; sources?: SourceItem[] }) { const parts = text.split(/```/); return (<div className="md-wrap">{parts.map((part, i) => { if (i % 2 === 1) { const nl = part.indexOf("\n"); const lang = nl > -1 ? part.slice(0, nl).trim() : ""; const code = nl > -1 ? part.slice(nl + 1) : part; return canvas ? <FileCard key={i} lang={lang || "txt"} code={code} fid={`${mid}-${i}`} num={(i + 1) / 2} /> : <InlineCodeBlock key={i} lang={lang || "code"} code={code} />; } if (!part.trim()) return null; return <div key={i} className="md-text" dangerouslySetInnerHTML={{ __html: mdToHtml(citeReplace(part, sources || [])) }} />; })}</div>); });
 
 // ================= THOUGHTS =================
 const srCSS = `.src-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(4px);z-index:40;opacity:0;pointer-events:none;transition:opacity .35s ease}.src-overlay.open{opacity:1;pointer-events:all}.src-drawer{position:fixed;top:0;left:0;height:100vh;height:100dvh;width:280px;background:rgba(20,20,24,.98);border-right:1px solid rgba(255,255,255,.12);box-shadow:8px 0 32px rgba(0,0,0,.45);z-index:50;display:flex;flex-direction:column;transform:translate3d(-100%,0,0);transition:transform .35s cubic-bezier(.25,.46,.45,.94);will-change:transform}.src-drawer.open{transform:translate3d(0,0,0)}.src-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 12px;font-family:'Syne',sans-serif;font-weight:700;font-size:14px;letter-spacing:.1em;color:#fff;text-transform:uppercase;flex-shrink:0}.src-head button{background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;padding:6px;display:flex}.src-list{flex:1;min-height:0;overflow-y:auto;padding:0 10px 20px;display:flex;flex-direction:column;gap:2px;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}.src-list::-webkit-scrollbar{width:0}.src-item{display:flex;flex-direction:column;gap:6px;padding:12px 10px;border-radius:12px;text-decoration:none}.src-item:hover{background:rgba(255,255,255,.06)}.src-title{color:rgba(255,255,255,.92);font-size:13.5px;line-height:1.45;font-weight:500}.src-desc{color:rgba(255,255,255,.55);font-size:12.5px;line-height:1.5;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.src-domain{display:flex;align-items:center;gap:8px;color:rgba(255,255,255,.6);font-size:12px}.src-domain img{width:16px;height:16px;border-radius:50%;flex-shrink:0;background:#1c1c22}.qts-sources{display:flex;align-items:center;gap:10px;margin:6px 0 0 0;cursor:pointer;padding:4px 0;border-radius:8px}.qts-sources:active{opacity:.7}.qts-sources-label{font-size:15px;color:rgba(255,255,255,.6)}.qts-sources .qts-favstack img{width:20px;height:20px;margin-left:-6px}.qts-sources .qts-favstack img:first-child{margin-left:0}body.src-open #open-btn{opacity:0;pointer-events:none;transition:opacity .2s ease}`;
@@ -215,12 +217,13 @@ function SourcesPanel({ sources, onClose }: { sources: SourceItem[]; onClose: ()
   </>), document.body);
 }
 
+// NOT memoized — must always re-render so the thinking process streams in automatically
 export function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }: { done: boolean; finished?: boolean; sources?: SourceItem[]; thoughts?: string; thinkTime?: number }) {
   const [elapsed, setElapsed] = useState(0);
   const [expanded, setExpanded] = useState(true);
   const [sourcesOpen, setSourcesOpen] = useState(false);
   useEffect(() => { if (done) return; const t = setInterval(() => setElapsed((p) => p + 1), 1000); return () => clearInterval(t); }, [done]);
-  useEffect(() => { if (done) setExpanded(false); }, [done]);
+  useEffect(() => { if (done) setExpanded(false); else setExpanded(true); }, [done]);
   const finalTime = thinkTime != null ? thinkTime : elapsed;
   const thoughtParas = (thoughts || "").split(/\n+/).map((t) => t.trim()).filter(Boolean);
   const found = sources?.length ?? 0;
@@ -270,36 +273,54 @@ export function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }:
 }
 
 // ================= UI (MESSAGES) =================
-function fastScroll(el: HTMLElement, to: number, duration = 220) {
-  const anyEl = el as any;
-  if (anyEl._fsRaf) cancelAnimationFrame(anyEl._fsRaf);
-  const start = el.scrollTop;
-  const diff = to - start;
-  if (Math.abs(diff) < 2) { el.scrollTop = to; return; }
+function smoothScrollToEl(c: HTMLElement, el: HTMLElement, gap: number, duration = 220) {
+  const anyC = c as any;
+  if (anyC._fsRaf) cancelAnimationFrame(anyC._fsRaf);
+  c.style.scrollBehavior = "auto";
+  const measure = () => {
+    const cRect = c.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    return Math.max(0, elRect.top - cRect.top + c.scrollTop - gap - 12);
+  };
+  const start = c.scrollTop;
+  const target = measure();
+  const travel = target - start;
+  const done = () => { window.dispatchEvent(new Event("quix-msg-scroll-done")); };
+  if (Math.abs(travel) < 2) { c.scrollTop = target; done(); return; }
   const t0 = performance.now();
   const ease = (t: number) => 1 - Math.pow(1 - t, 3);
   const step = (now: number) => {
     const p = Math.min(1, (now - t0) / duration);
-    el.scrollTop = start + diff * ease(p);
-    if (p < 1) anyEl._fsRaf = requestAnimationFrame(step); else anyEl._fsRaf = null;
+    c.scrollTop = start + travel * ease(p);
+    if (p < 1) { anyC._fsRaf = requestAnimationFrame(step); }
+    else {
+      anyC._fsRaf = null;
+      done();
+      const final = measure();
+      const off = final - c.scrollTop;
+      if (Math.abs(off) > 2) {
+        const c0 = c.scrollTop; const t1 = performance.now(); const d = 120;
+        const fix = (nw: number) => { const q = Math.min(1, (nw - t1) / d); c.scrollTop = c0 + off * (1 - Math.pow(1 - q, 2)); if (q < 1) anyC._fsRaf = requestAnimationFrame(fix); else anyC._fsRaf = null; };
+        anyC._fsRaf = requestAnimationFrame(fix);
+      }
+    }
   };
-  anyEl._fsRaf = requestAnimationFrame(step);
+  anyC._fsRaf = requestAnimationFrame(step);
 }
 
-export function UserMessage({ content, attachments, mid }: { content: string; attachments?: AttachmentMeta[]; mid: string }) { return (<div className="um-wrap" data-mid={mid}><style>{umCSS}</style><div className="message-user">{attachments && attachments.length > 0 && (<div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: content ? 10 : 0 }}>{attachments.map((a, i) => (<div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "rgba(255,255,255,0.7)", maxWidth: 160 }}>{a.kind === "image" && a.previewUrl ? (<img src={a.previewUrl} alt={a.name} style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover" }} />) : null}<span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span></div>))}</div>)}{content}</div><div className="um-actions"><button onClick={() => copyText(content)}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg></button></div></div>); }
+export const UserMessage = React.memo(function UserMessage({ content, attachments, mid }: { content: string; attachments?: AttachmentMeta[]; mid: string }) { return (<div className="um-wrap" data-mid={mid}><style>{umCSS}</style><div className="message-user">{attachments && attachments.length > 0 && (<div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: content ? 10 : 0 }}>{attachments.map((a, i) => (<div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "rgba(255,255,255,0.7)", maxWidth: 160 }}>{a.kind === "image" && a.previewUrl ? (<img src={a.previewUrl} alt={a.name} style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover" }} />) : null}<span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span></div>))}</div>)}{content}</div><div className="um-actions"><button onClick={() => copyText(content)}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg></button></div></div>); });
 
-export function AiMessage({ message, mid }: { message: ChatMessage & { thinkTime?: number }; mid: string }) {
-  const { updateMessage } = useChatStore();
+export const AiMessage = React.memo(function AiMessage({ message, mid }: { message: ChatMessage & { thinkTime?: number }; mid: string }) {
   const canvasOn = useCanvasStore((s) => s.on);
   const hasCode = message.content.includes("```");
   const shouldStream = message.status === "streaming";
-  const shown = useStreamText(message.content, shouldStream, 10, 2);
+  const shown = useStreamText(message.content, shouldStream, 30, 6);
   const isDone = message.status === "done" || message.status === "error";
   const isThinkingModel = message.model === "thinking" || message.model === "deepthink";
-  useEffect(() => { if (message.status !== "streaming") return; if (!message.doneStreaming) return; if (hasCode) { updateMessage(message.id, { status: "done" }); useChatStore.getState().setIsSending(false); const { currentChatId } = useChatStore.getState(); const session = useAuthStore.getState().session; if (currentChatId && session) insertMessage(currentChatId, { ...message, status: "done" }); return; } if (shown.length >= message.content.length) { const t = setTimeout(() => { updateMessage(message.id, { status: "done" }); useChatStore.getState().setIsSending(false); const { currentChatId } = useChatStore.getState(); const session = useAuthStore.getState().session; if (currentChatId && session) insertMessage(currentChatId, { ...message, status: "done" }); }, 150); return () => clearTimeout(t); } }, [message, shown, hasCode, updateMessage]);
-  useEffect(() => { const onStop = () => { const cur = useChatStore.getState().messages.find((m) => m.id === message.id); if (cur && cur.status === "streaming") { updateMessage(message.id, { content: shown, status: "done", doneStreaming: true }); useChatStore.getState().setIsSending(false); } }; window.addEventListener("quix-stop", onStop); return () => window.removeEventListener("quix-stop", onStop); }, [shown, message.id, updateMessage]);
-  return (<div className="message-ai" data-mid={mid}><style>{amCSS}</style><div className="ai-content">{isThinkingModel ? (<ThinkingStatus done={message.status !== "thinking"} finished={isDone} sources={message.sources} thoughts={message.thoughts} thinkTime={message.thinkTime} />) : (<BubbleIndicator dimmed={isDone} />)}<div style={{ width: "100%", maxWidth: 640 }}>{shouldStream && <MarkdownText text={shown} mid={mid} canvas={canvasOn} sources={message.sources} />}{(message.status === "done" || message.status === "error") && <MarkdownText text={message.content} mid={mid} canvas={canvasOn} sources={message.sources} />}</div></div>{message.status === "done" && (<div className="msg-actions"><button className={message.feedback === "up" ? "active" : ""} onClick={() => updateMessage(message.id, { feedback: message.feedback === "up" ? undefined : "up" })}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 10v12" /><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" /></svg></button><button className={message.feedback === "down" ? "active" : ""} onClick={() => updateMessage(message.id, { feedback: message.feedback === "down" ? undefined : "down" })}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 14V2" /><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" /></svg></button><button onClick={() => copyText(message.content)}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg></button></div>)}</div>);
-}
+  useEffect(() => { if (message.status !== "streaming") return; if (!message.doneStreaming) return; if (hasCode) { updateMsg(message.id, { status: "done" }); useChatStore.getState().setIsSending(false); const { currentChatId } = useChatStore.getState(); const session = useAuthStore.getState().session; if (currentChatId && session) insertMessage(currentChatId, { ...message, status: "done" }); return; } if (shown.length >= message.content.length) { const t = setTimeout(() => { updateMsg(message.id, { status: "done" }); useChatStore.getState().setIsSending(false); const { currentChatId } = useChatStore.getState(); const session = useAuthStore.getState().session; if (currentChatId && session) insertMessage(currentChatId, { ...message, status: "done" }); }, 150); return () => clearTimeout(t); } }, [message, shown, hasCode]);
+  useEffect(() => { const onStop =() => { const cur = useChatStore.getState().messages.find((m) => m.id === message.id); if (cur && cur.status === "streaming") { updateMsg(message.id, { content: shown, status: "done", doneStreaming: true }); useChatStore.getState().setIsSending(false); } }; window.addEventListener("quix-stop", onStop); return () => window.removeEventListener("quix-stop", onStop); }, [shown, message.id]);
+  return (<div className="message-ai" data-mid={mid}><style>{amCSS}</style><div className="ai-content">{isThinkingModel ? (<ThinkingStatus done={message.status !== "thinking"} finished={isDone} sources={message.sources} thoughts={message.thoughts} thinkTime={message.thinkTime} />) : (<BubbleIndicator dimmed={isDone} />)}<div style={{ width: "100%", maxWidth: 640 }}>{shouldStream && <MarkdownText text={shown} mid={mid} canvas={canvasOn} sources={message.sources} />}{(message.status === "done" || message.status === "error") && <MarkdownText text={message.content} mid={mid} canvas={canvasOn} sources={message.sources} />}</div></div>{message.status === "done" && (<div className="msg-actions"><button className={message.feedback === "up" ? "active" : ""} onClick={() => updateMsg(message.id, { feedback: message.feedback === "up" ? undefined : "up" })}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 10v12" /><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" /></svg></button><button className={message.feedback === "down" ? "active" : ""} onClick={() => updateMsg(message.id, { feedback: message.feedback === "down" ? undefined : "down" })}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 14V2" /><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" /></svg></button><button onClick={() => copyText(message.content)}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg></button></div>)}</div>);
+});
 
 export function MessageList() {
   const messages = useChatStore((s) => s.messages);
@@ -323,20 +344,16 @@ export function MessageList() {
       const hRect = header ? header.getBoundingClientRect() : null;
       const gap = hRect ? Math.max(0, hRect.bottom - cRect.top) : 0;
 
-      let cur = parseFloat(getComputedStyle(container).paddingBottom) || 0;
-      if (cur < 110) { container.style.paddingBottom = "110px"; cur = 110; }
-
-      const elRect = el.getBoundingClientRect();
-      const elTop = elRect.top - cRect.top + c.scrollTop;
       const lastChild = container.lastElementChild as HTMLElement;
-      const lastRect = lastChild.getBoundingClientRect();
-      const contentBottom = lastRect.bottom - cRect.top + c.scrollTop;
-
-      const desired = Math.max(0, elTop - gap - 8);
+      const contentBottom = lastChild.getBoundingClientRect().bottom - cRect.top + c.scrollTop;
+      const elTop = el.getBoundingClientRect().top - cRect.top + c.scrollTop;
+      const desired = Math.max(0, elTop - gap - 12);
       const need = desired + c.clientHeight - contentBottom;
+      const cur = parseFloat(getComputedStyle(container).paddingBottom) || 0;
       if (need > 1) container.style.paddingBottom = `${cur + need}px`;
+      else if (cur < 110) container.style.paddingBottom = "110px";
 
-      fastScroll(c, desired, 220);
+      smoothScrollToEl(c, el, gap, 220);
     }));
   }, [messages]);
 

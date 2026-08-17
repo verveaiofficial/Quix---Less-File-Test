@@ -9,11 +9,36 @@ export const usePinStore = create<any>((set, get) => ({
   toggle: (id: string) => { if (!id) return; const cur: string[] = get().pinned; const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]; try { localStorage.setItem("quix_pinned_v1", JSON.stringify(next)); } catch {} set({ pinned: next }); },
 }));
 export const useImagineStore = create<any>((set) => ({ nonce: 0, bump: () => set((s: any) => ({ nonce: s.nonce + 1 })) }));
+export const useUsagePageStore = create<any>((set) => ({ open: false, openPage: () => set({ open: true }), closePage: () => set({ open: false }) }));
+export const useScreenPageStore = create<any>((set) => ({ open: false, openPage: () => set({ open: true }), closePage: () => set({ open: false }) }));
 
-export function shimmer(e: any) { const el = e.currentTarget as HTMLElement; el.classList.remove("shimmer"); void el.offsetWidth; el.classList.add("shimmer"); setTimeout(() => el.classList.remove("shimmer"), 500); }
-export function shimmerThen(e: any, fn: () => void) { shimmer(e); setTimeout(fn, 450); }
+const rippleCSS = `.qx-ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.45);opacity:.6;transform:scale(0);animation:qx-rip .55s ease-out forwards;pointer-events:none}@keyframes qx-rip{to{transform:scale(1);opacity:0}}`;
+export function shimmer(e: any) {
+  const el = e?.currentTarget as HTMLElement;
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  const d = Math.max(rect.width, rect.height) * 2.5;
+  const span = document.createElement("span");
+  span.className = "qx-ripple";
+  span.style.width = span.style.height = d + "px";
+  const cx = e && e.clientX ? e.clientX : rect.left + rect.width / 2;
+  const cy = e && e.clientY ? e.clientY : rect.top + rect.height / 2;
+  span.style.left = cx - rect.left - d / 2 + "px";
+  span.style.top = cy - rect.top - d / 2 + "px";
+  if (!el.style.position || el.style.position === "static") el.style.position = "relative";
+  const prevOver = el.style.overflow;
+  el.style.overflow = "hidden";
+  span.addEventListener("animationend", () => { span.remove(); el.style.overflow = prevOver; });
+  el.appendChild(span);
+}
+export function shimmerThen(e: any, fn: () => void) { shimmer(e); setTimeout(fn, 180); }
 
 function timeAgo(d: string): string { const diff = Math.max(0, Date.now() - new Date(d).getTime()); const m = Math.floor(diff / 60000); if (m < 1) return "Just now"; if (m < 60) return `${m}m ago`; const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`; return `${Math.floor(h / 24)}d ago`; }
+function msToReset(): number { const n = new Date(); const next = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate() + 1, 0, 0, 0, 0)); return next.getTime() - n.getTime(); }
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+const usCSS = `#usage-screen{position:fixed;inset:0;z-index:160;background:#050508;display:flex;flex-direction:column;opacity:0;pointer-events:none;transform:translateY(30px);transition:opacity .35s ease,transform .35s ease}#usage-screen.show{opacity:1;pointer-events:all;transform:translateY(0)}.usage-timer{display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px 16px}.usage-timer-val{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:#fff;letter-spacing:.06em}`;
+const dsCSS = `#display-screen{position:fixed;inset:0;z-index:160;background:#050508;display:flex;flex-direction:column;opacity:0;pointer-events:none;transform:translateY(30px);transition:opacity .35s ease,transform .35s ease}#display-screen.show{opacity:1;pointer-events:all;transform:translateY(0)}`;
 
 export function ChatHeader({ hidden }: { hidden?: boolean }) {
   const { chatTitle, setChatTitle, currentChatId, resetChat } = useChatStore();
@@ -34,6 +59,7 @@ export function ChatHeader({ hidden }: { hidden?: boolean }) {
   return (
     <>
       <style>{hdCSS}</style>
+      <style>{rippleCSS}</style>
       <div id="chat-header">
         <div style={{ width: 36, flexShrink: 0 }} />
         <div className="header-center"><div className="view-toggle"><button className={`view-btn ${viewMode === "chat" ? "active" : ""}`} onClick={() => setViewMode("chat")}>Chat</button><button className={`view-btn ${viewMode === "imagine" ? "active" : ""}`} onClick={() => setViewMode("imagine")}>Imagine</button></div></div>
@@ -60,7 +86,7 @@ export function ChatHeader({ hidden }: { hidden?: boolean }) {
 export function MenuDrawer({ hidden }: { hidden?: boolean }) {
   const { drawerOpen, setDrawerOpen, openAuthFromDrawer, openSettingsFromDrawer } = useUIStore();
   const { resetChat, loadMessages, setCurrentChat, currentChatId } = useChatStore();
-  const { session, signOut } = useAuthStore();
+  const { session } = useAuthStore();
   const pinned = usePinStore((s) => s.pinned);
   const [chats, setChats] = useState<any[]>([]);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -92,7 +118,7 @@ export function MenuDrawer({ hidden }: { hidden?: boolean }) {
             )}
             <div className="profile-row">
               <button className="signin-btn shimmer-btn" style={{ flex: 1 }} onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>Your profile</button>
-              <button className="settings-circle shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })} aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82v.01a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l.06-.06a2 2 0 1 1 2.83-2.83l-.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
+              <button className="settings-circle shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })} aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82v-.01a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l.06-.06a2 2 0 1 1 2.83-2.83l-.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
             </div>
           </div>
         </div>
@@ -159,16 +185,83 @@ export function AuthScreen() {
     </>
   );
 }
+export function UsagePage() {
+  const open = useUsagePageStore((s) => s.open);
+  const close = useUsagePageStore((s) => s.closePage);
+  const usage = useUsageStore((s) => s.usage);
+  const limitFor = useUsageStore((s) => s.limitFor);
+  const [left, setLeft] = useState(msToReset());
+  useEffect(() => { const t = setInterval(() => setLeft(msToReset()), 1000); return () => clearInterval(t); }, []);
+  const h = Math.floor(left / 3600000); const m = Math.floor((left % 3600000) / 60000); const s = Math.floor((left % 60000) / 1000);
+  return (
+    <>
+      <style>{stCSS}</style>
+      <style>{usCSS}</style>
+      <div id="usage-screen" className={open ? "show" : ""}>
+        <div className="set-header"><button className="set-back" onClick={close} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Usage</div></div>
+        <div className="set-body">
+          <div className="usage-timer">
+            <span className="set-label" style={{ fontSize: 12 }}>Resets in</span>
+            <span className="usage-timer-val">{pad2(h)}:{pad2(m)}:{pad2(s)}</span>
+          </div>
+          <div className="set-section">
+            <div className="set-label">Today's usage by model</div>
+            {CHAT_MODELS.map((mdl) => {
+              const lim = limitFor(mdl);
+              const leftCount = usage[mdl] ?? 0;
+              return (
+                <div className="limit-row" key={mdl}>
+                  <div className="limit-top">
+                    <span>{MODELS[mdl].name}</span>
+                    <span>{lim < 0 ? "Unlimited" : lim === 0 ? "Sign in required" : `${leftCount}/${lim}`}</span>
+                  </div>
+                  <div className="limit-bar"><div className="limit-fill" style={{ width: lim < 0 ? 100 : lim === 0 ? 0 : `${Math.min(100, (leftCount / lim) * 100)}%` }} /></div>
+                </div>
+              );
+            })}
+          </div>
+          <div className="mem-empty">Daily usage reset at midnight UTC.</div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+export function ScreenSizePage() {
+  const open = useScreenPageStore((s) => s.open);
+  const close = useScreenPageStore((s) => s.closePage);
+  const { fontScale, setFontScale } = useUIStore();
+  return (
+    <>
+      <style>{stCSS}</style>
+      <style>{dsCSS}</style>
+      <div id="display-screen" className={open ? "show" : ""}>
+        <div className="set-header"><button className="set-back" onClick={close} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Screen size</div></div>
+        <div className="set-body">
+          <div className="set-section">
+            <div className="set-label">Text size</div>
+            <div className="font-row">
+              <button className="font-btn" onClick={() => setFontScale(fontScale - 0.05)}>−</button>
+              <span className="font-val">{Math.round(fontScale * 100)}%</span>
+              <button className="font-btn" onClick={() => setFontScale(fontScale + 0.05)}>+</button>
+            </div>
+            <div className="mem-empty">Applies to the whole app instantly.</div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
 
 export function SettingsPage() {
-  const { settingsOpen, closeSettings, fontScale, setFontScale, openMemories } = useUIStore();
+  const { settingsOpen, closeSettings, openMemories } = useUIStore();
   const { profile, setProfile } = useProfileStore();
   const { session, signOut } = useAuthStore();
   const { resetChat } = useChatStore();
   const memories = useMemoryStore((s) => s.memories);
   const loadFor = useMemoryStore((s) => s.loadFor);
-  const usage = useUsageStore((s) => s.usage);
-  const limitFor = useUsageStore((s) => s.limitFor);
+  const openUsagePage = useUsagePageStore((s) => s.openPage);
+  const openScreenPage = useScreenPageStore((s) => s.openPage);
   const fileRef = useRef<HTMLInputElement>(null);
   const uid = session?.user?.id ?? null;
   useEffect(() => { if (uid) loadFor(uid); }, [uid, loadFor]);
@@ -220,13 +313,15 @@ export function SettingsPage() {
             <input className="set-field" type="email" placeholder="Email" value={profile.email} onChange={(e) => setProfile({ email: e.target.value })} />
           </div>
           <div className="set-section">
-            <div className="set-label">Daily message limits</div>
-            {CHAT_MODELS.map((m) => { const lim = limitFor(m); const used = usage[m] ?? 0; const rem = lim < 0 ? Infinity : Math.max(0, lim - used); return (<div className="limit-row" key={m}><div className="limit-top"><span>{MODELS[m].name}</span><span>{lim < 0 ? "Unlimited" : lim === 0 ? "Sign in required" : `${rem}/${lim} left`}</span></div><div className="limit-bar"><div className="limit-fill" style={{ width: lim < 0 ? 100 : lim === 0 ? 0 : `${(rem / lim) * 100}%` }} /></div></div>); })}
-            <div className="mem-empty">Limits reset at midnight UTC.</div>
-          </div>
-          {uid && (
-            <div className="set-section">
-              <div className="set-label">Memory</div>
+            <div className="set-label">Settings</div>
+            <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openUsagePage())}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
+                Usage
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
+            {uid && (
               <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openMemories())}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1.3.5 2.6 1.5 3.5.8.8 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></svg>
@@ -234,20 +329,21 @@ export function SettingsPage() {
                 </div>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
               </button>
-            </div>
-          )}
-          <div className="set-section">
-            <div className="set-label">Screen size</div>
-            <div className="font-row">
-              <button className="font-btn" onClick={() => setFontScale(fontScale - 0.05)}>−</button>
-              <span className="font-val">{Math.round(fontScale * 100)}%</span>
-              <button className="font-btn" onClick={() => setFontScale(fontScale + 0.05)}>+</button>
-            </div>
+            )}
+            <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openScreenPage())}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" /><line x1="12" y1="18" x2="12.01" y2="18" /></svg>
+                Screen size
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
           </div>
           {session && (<div className="set-section"><button className="signout-big" onClick={async () => { await signOut(); resetChat(); }}>Sign out</button></div>)}
           <div className="watermark">Quix · {APP_VERSION}</div>
         </div>
       </div>
+      <UsagePage />
+      <ScreenSizePage />
     </>
   );
 }
@@ -346,7 +442,6 @@ export function VoiceCallLayer({ onExit }: { onExit: () => void }) {
 
 // ================= INPUT BAR =================
 const WAVE_BARS = 24;
-
 const ibFastCSS = `.input-wrapper{transition:none !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
 
 export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
@@ -368,8 +463,11 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const interimTailRef = useRef("");
   const committedRef = useRef<string[]>([]);
   const finishTimeoutRef = useRef<any>(null);
+  const dropTimeoutRef = useRef<any>(null);
+  const pendingDropRef = useRef<(() => void) | null>(null);
   const spinDir = useRef(1);
   const offsetRef = useRef(0);
+  const forceDownRef = useRef(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -387,14 +485,19 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
       if (!w || !window.visualViewport) return;
       const vv = window.visualViewport;
       const kbSize = window.innerHeight - vv.height;
-      if (kbSize < 120 && offsetRef.current === 0) return;
+      if (kbSize < 120) {
+        if (offsetRef.current !== 0 || forceDownRef.current) {
+          offsetRef.current = 0;
+          forceDownRef.current = false;
+          w.style.removeProperty("transition");
+          w.style.bottom = "0px";
+        }
+        return;
+      }
+      if (forceDownRef.current) return;
       const kbTop = vv.offsetTop + vv.height;
       const wr = w.getBoundingClientRect();
       const delta = wr.bottom - kbTop;
-      if (kbSize < 120) {
-        if (offsetRef.current !== 0) { offsetRef.current = 0; w.style.bottom = "0px"; }
-        return;
-      }
       if (Math.abs(delta) < 1) return;
       const next = Math.max(0, offsetRef.current + delta);
       offsetRef.current = next;
@@ -405,12 +508,10 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   }, []);
 
   useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
-  useEffect(() => { return () => { listeningRef.current = false; try { recRef.current?.stop(); } catch {} if (finishTimeoutRef.current) clearTimeout(finishTimeoutRef.current); }; }, []);
+  useEffect(() => { return () => { listeningRef.current = false; try { recRef.current?.stop(); } catch {} if (finishTimeoutRef.current) clearTimeout(finishTimeoutRef.current); if (dropTimeoutRef.current) clearTimeout(dropTimeoutRef.current); if (pendingDropRef.current) { window.removeEventListener("quix-msg-scroll-done", pendingDropRef.current); pendingDropRef.current = null; } }; }, []);
 
   const prevent = (e: any) => e.preventDefault();
-
   const resetVoiceRefs = () => { sessionTextRef.current = ""; interimTailRef.current = ""; committedRef.current = []; };
-
   const commitAndReset = () => {
     const chunk = [sessionTextRef.current, interimTailRef.current].filter(Boolean).join(" ").trim();
     if (chunk) committedRef.current.push(chunk);
@@ -418,9 +519,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
     resetVoiceRefs();
     if (full) setInputValue((prev) => (prev ? prev + " " + full : full).trim());
   };
-
   const stopMic = () => { listeningRef.current = false; setListening(false); try { recRef.current?.stop(); } catch {} };
-
   const triggerSpin = () => {
     setSpinClass("");
     setTimeout(() => {
@@ -429,7 +528,6 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
       spinDir.current *= -1;
     }, 10);
   };
-
   const startMic = () => {
     const w = window as any;
     const SR = w.SpeechRecognition || w.webkitSpeechRecognition;
@@ -460,12 +558,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
         return;
       }
       if (finishTimeoutRef.current) { clearTimeout(finishTimeoutRef.current); finishTimeoutRef.current = null; }
-      if (finishingRef.current) {
-        finishingRef.current = false;
-        commitAndReset();
-      } else {
-        resetVoiceRefs();
-      }
+      if (finishingRef.current) { finishingRef.current = false; commitAndReset(); } else { resetVoiceRefs(); }
       setFinishing(false);
       setListening(false);
     };
@@ -476,7 +569,6 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
     triggerSpin();
     try { rec.start(); } catch {}
   };
-
   const finishMic = () => {
     if (!listeningRef.current || finishingRef.current) return;
     listeningRef.current = false;
@@ -484,15 +576,9 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
     setFinishing(true);
     try { recRef.current?.stop(); } catch { finishingRef.current = false; setFinishing(false); setListening(false); commitAndReset(); return; }
     finishTimeoutRef.current = setTimeout(() => {
-      if (finishingRef.current) {
-        finishingRef.current = false;
-        setFinishing(false);
-        setListening(false);
-        commitAndReset();
-      }
+      if (finishingRef.current) { finishingRef.current = false; setFinishing(false); setListening(false); commitAndReset(); }
     }, 2500);
   };
-
   const cancelMic = () => {
     if (!listeningRef.current) return;
     listeningRef.current = false;
@@ -502,20 +588,44 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
     setFinishing(false);
     setListening(false);
   };
-
   const toggleMic = () => { if (listeningRef.current) finishMic(); else startMic(); };
   const toggleUpload = (e: any) => { e.preventDefault(); e.stopPropagation(); setModelMenuOpen(false); triggerSpin(); setMenuOpen((p) => !p); };
   const pick = async (files: FileList | null) => { if (!files) return; const parsed = await Promise.all(Array.from(files).map(readFileAsAttachment)); setAttachments((p) => [...p, ...parsed.filter((x): x is PendingAttachment => x !== null)]); };
-
   const hasText = inputValue.trim().length > 0;
   const showStop = isSending;
   const showMic = listening || (!showStop && !hasText);
-
+  const dropBar = () => {
+    const w = wrapRef.current;
+    if (!w) return;
+    forceDownRef.current = true;
+    offsetRef.current = 0;
+    w.style.setProperty("transition", "bottom .3s cubic-bezier(.22,.61,.36,1)", "important");
+    w.style.bottom = "0px";
+  };
+  const cancelPendingDrop = () => {
+    if (pendingDropRef.current) { window.removeEventListener("quix-msg-scroll-done", pendingDropRef.current); pendingDropRef.current = null; }
+    if (dropTimeoutRef.current) { clearTimeout(dropTimeoutRef.current); dropTimeoutRef.current = null; }
+  };
+  const finishDrop = () => { cancelPendingDrop(); if (taRef.current) taRef.current.blur(); dropBar(); };
   const pickModel = (id: string) => { if (isGuest && id !== "thinking") { setModelMenuOpen(false); useUIStore.getState().openAuth(); return; } setActiveModel(id); setModelMenuOpen(false); taRef.current?.blur(); };
-  const send = () => { const text = inputValue.trim(); if (!text) return; stopMic(); if (attachments.length === 0 && !text) return; onSend?.(text, attachments); setInputValue(""); setAttachments([]); if (taRef.current) { taRef.current.blur(); taRef.current.style.height = "40px"; } };
+  const send = () => {
+    const text = inputValue.trim();
+    if (!text) return;
+    stopMic();
+    if (attachments.length === 0 && !text) return;
+    onSend?.(text, attachments);
+    setInputValue("");
+    setAttachments([]);
+    if (taRef.current) taRef.current.style.height = "40px";
+    const kbOpen = offsetRef.current > 0;
+    if (!kbOpen) { finishDrop(); return; }
+    const listener = () => finishDrop();
+    pendingDropRef.current = listener;
+    window.addEventListener("quix-msg-scroll-done", listener);
+    dropTimeoutRef.current = setTimeout(finishDrop, 400);
+  };
   const stop = () => { abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
   const mainAction = () => { if (showStop) return stop(); if (finishing) return; if (listening) return finishMic(); if (hasText) return send(); return toggleMic(); };
-
   const sendIconKey = showStop ? "stop" : finishing ? "finishing" : listening ? "confirm" : showMic ? "mic" : "arrow";
 
   return (
@@ -532,7 +642,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
               {Array.from({ length: WAVE_BARS }).map((_, i) => (<span key={i} style={{ animationDelay: `${(i % 8) * 0.09}s` }} />))}
             </div>
           ) : (
-            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research..." : "Ask Quix..."} rows={1} value={inputValue} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} />
+            <textarea ref={taRef} placeholder={isDeepThink ? "Ask DeepThink to research..." : "Ask Quix..."} rows={1} value={inputValue} onFocus={() => { cancelPendingDrop(); forceDownRef.current = false; if (wrapRef.current) wrapRef.current.style.removeProperty("transition"); }} onChange={(e) => { setInputValue(e.target.value); if (taRef.current) { taRef.current.style.height = "40px"; taRef.current.style.height = Math.min(taRef.current.scrollHeight, 250) + "px"; } }} />
           )}
           <div className="action-row">
             <div className="action-left">
@@ -540,11 +650,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
                 <div style={{ position: "relative" }}>
                   <button type="button" className={`plus-btn ${spinClass}`} onClick={listening ? cancelMic : toggleUpload} onMouseDown={prevent} onTouchStart={prevent} disabled={finishing} aria-label={listening ? "Cancel voice input" : "Upload options"}>
                     <span className="morph-icon" key={listening ? "cancel" : "plus"}>
-                      {listening ? (
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
-                      ) : (
-                        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>
-                      )}
+                      {listening ? (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>) : (<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>)}
                     </span>
                   </button>
                   <div className={`pop-menu ${menuOpen ? "show" : ""}`} style={{ width: 180 }}>
@@ -581,17 +687,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
               {canvasOn && !isDeepThink && !listening && (<button type="button" className="cv-pill" onClick={() => openFilesList()}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Canvas{fileCount > 0 ? ` · ${fileCount}` : ""}</button>)}
               <button type="button" className={`send-btn ${showStop ? "stop" : ""} ${finishing ? "finishing" : ""} ${showMic ? (listening ? "mic listening" : "mic") : ""}`} onClick={mainAction} disabled={finishing} aria-label={showStop ? "Stop" : finishing ? "Finishing up" : listening ? "Confirm voice input" : hasText ? "Send" : "Voice input"}>
                 <span className="morph-icon" key={sendIconKey}>
-                  {showStop ? (
-                    <svg width="15" height="15" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>
-                  ) : finishing ? (
-                    <svg width="16" height="16" viewBox="0 0 24 24" className="spin-loader"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="42 100" /></svg>
-                  ) : listening ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
-                  ) : showMic ? (
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="10" width="2.6" height="4" rx="1.3" /><rect x="9.2" y="6" width="2.6" height="12" rx="1.3" /><rect x="14.4" y="8" width="2.6" height="8" rx="1.3" /><rect x="19.6" y="10.5" width="2.6" height="3" rx="1.3" /></svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
-                  )}
+                  {showStop ? (<svg width="15" height="15" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2.5" /></svg>) : finishing ? (<svg width="16" height="16" viewBox="0 0 24 24" className="spin-loader"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeDasharray="42 100" /></svg>) : listening ? (<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>) : showMic ? (<svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="10" width="2.6" height="4" rx="1.3" /><rect x="9.2" y="6" width="2.6" height="12" rx="1.3" /><rect x="14.4" y="8" width="2.6" height="8" rx="1.3" /><rect x="19.6" y="10.5" width="2.6" height="3" rx="1.3" /></svg>) : (<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>)}
                 </span>
               </button>
             </div>
