@@ -270,16 +270,15 @@ export function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }:
 }
 
 // ================= UI (MESSAGES) =================
-function fastScroll(el: HTMLElement, to: number, duration = 240) {
+function fastScroll(el: HTMLElement, to: number, duration = 300) {
   const anyEl = el as any;
   if (anyEl._fsRaf) cancelAnimationFrame(anyEl._fsRaf);
-  // Force manual control so the browser's own smooth-scroll can't fight our animation (fixes the double-jump)
   el.style.scrollBehavior = "auto";
   const start = el.scrollTop;
   const diff = to - start;
   if (Math.abs(diff) < 2) { el.scrollTop = to; return; }
   const t0 = performance.now();
-  const ease = (t: number) => 1 - Math.pow(1 - t, 4);
+  const ease = (t: number) => 1 - Math.pow(1 - t, 3);
   const step = (now: number) => {
     const p = Math.min(1, (now - t0) / duration);
     el.scrollTop = start + diff * ease(p);
@@ -317,28 +316,49 @@ export function MessageList() {
     if (!lastUser || scrolledUserIds.current.has(lastUser.id)) return;
     scrolledUserIds.current.add(lastUser.id);
 
+    // Wait for layout to stabilize
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const el = container.querySelector(`[data-mid="${lastUser.id}"]`) as HTMLElement;
       if (!el) return;
+      
       const header = document.querySelector("#chat-header") as HTMLElement | null;
       const cRect = c.getBoundingClientRect();
       const hRect = header ? header.getBoundingClientRect() : null;
       const gap = hRect ? Math.max(0, hRect.bottom - cRect.top) : 0;
 
+      // Get current padding
       let cur = parseFloat(getComputedStyle(container).paddingBottom) || 0;
-      if (cur < 110) { container.style.paddingBottom = "110px"; cur = 110; }
-
-      const elRect = el.getBoundingClientRect();
-      const elTop = elRect.top - cRect.top + c.scrollTop;
+      
+      // Calculate content bottom
       const lastChild = container.lastElementChild as HTMLElement;
       const lastRect = lastChild.getBoundingClientRect();
       const contentBottom = lastRect.bottom - cRect.top + c.scrollTop;
-
-      const desired = Math.max(0, elTop - gap - 8);
+      
+      // Calculate element position
+      const elRect = el.getBoundingClientRect();
+      const elTop = elRect.top - cRect.top + c.scrollTop;
+      
+      // Calculate desired scroll position
+      const desired = Math.max(0, elTop - gap - 12);
+      
+      // Calculate if we need more padding
       const need = desired + c.clientHeight - contentBottom;
-      if (need > 1) container.style.paddingBottom = `${cur + need}px`;
+      if (need > 1) {
+        container.style.paddingBottom = `${Math.max(cur, 110) + need}px`;
+      } else if (cur < 110) {
+        container.style.paddingBottom = "110px";
+      }
 
-      fastScroll(c, desired, 240);
+      // Wait one more frame for padding to take effect
+      requestAnimationFrame(() => {
+        // Recalculate with new padding
+        const elRect2 = el.getBoundingClientRect();
+        const elTop2 = elRect2.top - cRect.top + c.scrollTop;
+        const finalDesired = Math.max(0, elTop2 - gap - 12);
+        
+        // Smooth scroll to final position
+        fastScroll(c, finalDesired, 300);
+      });
     }));
   }, [messages]);
 
