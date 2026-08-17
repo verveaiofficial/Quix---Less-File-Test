@@ -270,27 +270,41 @@ export function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }:
 }
 
 // ================= UI (MESSAGES) =================
-function smoothScrollToEl(c: HTMLElement, el: HTMLElement, gap: number, duration = 320) {
+function smoothScrollToEl(c: HTMLElement, el: HTMLElement, gap: number, duration = 300) {
   const anyC = c as any;
   if (anyC._fsRaf) cancelAnimationFrame(anyC._fsRaf);
   c.style.scrollBehavior = "auto";
-  const t0 = performance.now();
-  const start = c.scrollTop;
   const measure = () => {
     const cRect = c.getBoundingClientRect();
     const elRect = el.getBoundingClientRect();
     return Math.max(0, elRect.top - cRect.top + c.scrollTop - gap - 12);
   };
-  const initialTarget = measure();
-  const travel = initialTarget - start;
+  const start = c.scrollTop;
+  const target = measure();
+  const travel = target - start;
+  if (Math.abs(travel) < 2) { c.scrollTop = target; return; }
+  const t0 = performance.now();
   const ease = (t: number) => 1 - Math.pow(1 - t, 3);
   const step = (now: number) => {
     const p = Math.min(1, (now - t0) / duration);
-    const liveTarget = measure();
-    const liveStart = liveTarget - travel;
-    c.scrollTop = liveStart + travel * ease(p);
-    if (p < 1) anyC._fsRaf = requestAnimationFrame(step);
-    else anyC._fsRaf = null;
+    c.scrollTop = start + travel * ease(p);
+    if (p < 1) { anyC._fsRaf = requestAnimationFrame(step); }
+    else {
+      anyC._fsRaf = null;
+      const final = measure();
+      const off = final - c.scrollTop;
+      if (Math.abs(off) > 2) {
+        const c0 = c.scrollTop;
+        const t1 = performance.now();
+        const d = 140;
+        const fix = (nw: number) => {
+          const q = Math.min(1, (nw - t1) / d);
+          c.scrollTop = c0 + off * (1 - Math.pow(1 - q, 2));
+          if (q < 1) anyC._fsRaf = requestAnimationFrame(fix); else anyC._fsRaf = null;
+        };
+        anyC._fsRaf = requestAnimationFrame(fix);
+      }
+    }
   };
   anyC._fsRaf = requestAnimationFrame(step);
 }
