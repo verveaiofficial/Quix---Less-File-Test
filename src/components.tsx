@@ -270,21 +270,29 @@ export function ThinkingStatus({ done, finished, sources, thoughts, thinkTime }:
 }
 
 // ================= UI (MESSAGES) =================
-function fastScroll(el: HTMLElement, to: number, duration = 300) {
-  const anyEl = el as any;
-  if (anyEl._fsRaf) cancelAnimationFrame(anyEl._fsRaf);
-  el.style.scrollBehavior = "auto";
-  const start = el.scrollTop;
-  const diff = to - start;
-  if (Math.abs(diff) < 2) { el.scrollTop = to; return; }
+function smoothScrollToEl(c: HTMLElement, el: HTMLElement, gap: number, duration = 320) {
+  const anyC = c as any;
+  if (anyC._fsRaf) cancelAnimationFrame(anyC._fsRaf);
+  c.style.scrollBehavior = "auto";
   const t0 = performance.now();
+  const start = c.scrollTop;
+  const measure = () => {
+    const cRect = c.getBoundingClientRect();
+    const elRect = el.getBoundingClientRect();
+    return Math.max(0, elRect.top - cRect.top + c.scrollTop - gap - 12);
+  };
+  const initialTarget = measure();
+  const travel = initialTarget - start;
   const ease = (t: number) => 1 - Math.pow(1 - t, 3);
   const step = (now: number) => {
     const p = Math.min(1, (now - t0) / duration);
-    el.scrollTop = start + diff * ease(p);
-    if (p < 1) anyEl._fsRaf = requestAnimationFrame(step); else anyEl._fsRaf = null;
+    const liveTarget = measure();
+    const liveStart = liveTarget - travel;
+    c.scrollTop = liveStart + travel * ease(p);
+    if (p < 1) anyC._fsRaf = requestAnimationFrame(step);
+    else anyC._fsRaf = null;
   };
-  anyEl._fsRaf = requestAnimationFrame(step);
+  anyC._fsRaf = requestAnimationFrame(step);
 }
 
 export function UserMessage({ content, attachments, mid }: { content: string; attachments?: AttachmentMeta[]; mid: string }) { return (<div className="um-wrap" data-mid={mid}><style>{umCSS}</style><div className="message-user">{attachments && attachments.length > 0 && (<div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: content ? 10 : 0 }}>{attachments.map((a, i) => (<div key={i} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 8, padding: "4px 8px", fontSize: 11, color: "rgba(255,255,255,0.7)", maxWidth: 160 }}>{a.kind === "image" && a.previewUrl ? (<img src={a.previewUrl} alt={a.name} style={{ width: 26, height: 26, borderRadius: 6, objectFit: "cover" }} />) : null}<span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</span></div>))}</div>)}{content}</div><div className="um-actions"><button onClick={() => copyText(content)}><svg width="12" height="12" viewBox="0 0 24 24" fill="none" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" /></svg></button></div></div>); }
@@ -316,49 +324,24 @@ export function MessageList() {
     if (!lastUser || scrolledUserIds.current.has(lastUser.id)) return;
     scrolledUserIds.current.add(lastUser.id);
 
-    // Wait for layout to stabilize
     requestAnimationFrame(() => requestAnimationFrame(() => {
       const el = container.querySelector(`[data-mid="${lastUser.id}"]`) as HTMLElement;
       if (!el) return;
-      
       const header = document.querySelector("#chat-header") as HTMLElement | null;
       const cRect = c.getBoundingClientRect();
       const hRect = header ? header.getBoundingClientRect() : null;
       const gap = hRect ? Math.max(0, hRect.bottom - cRect.top) : 0;
 
-      // Get current padding
-      let cur = parseFloat(getComputedStyle(container).paddingBottom) || 0;
-      
-      // Calculate content bottom
       const lastChild = container.lastElementChild as HTMLElement;
-      const lastRect = lastChild.getBoundingClientRect();
-      const contentBottom = lastRect.bottom - cRect.top + c.scrollTop;
-      
-      // Calculate element position
-      const elRect = el.getBoundingClientRect();
-      const elTop = elRect.top - cRect.top + c.scrollTop;
-      
-      // Calculate desired scroll position
+      const contentBottom = lastChild.getBoundingClientRect().bottom - cRect.top + c.scrollTop;
+      const elTop = el.getBoundingClientRect().top - cRect.top + c.scrollTop;
       const desired = Math.max(0, elTop - gap - 12);
-      
-      // Calculate if we need more padding
       const need = desired + c.clientHeight - contentBottom;
-      if (need > 1) {
-        container.style.paddingBottom = `${Math.max(cur, 110) + need}px`;
-      } else if (cur < 110) {
-        container.style.paddingBottom = "110px";
-      }
+      const cur = parseFloat(getComputedStyle(container).paddingBottom) || 0;
+      if (need > 1) container.style.paddingBottom = `${cur + need}px`;
+      else if (cur < 110) container.style.paddingBottom = "110px";
 
-      // Wait one more frame for padding to take effect
-      requestAnimationFrame(() => {
-        // Recalculate with new padding
-        const elRect2 = el.getBoundingClientRect();
-        const elTop2 = elRect2.top - cRect.top + c.scrollTop;
-        const finalDesired = Math.max(0, elTop2 - gap - 12);
-        
-        // Smooth scroll to final position
-        fastScroll(c, finalDesired, 300);
-      });
+      smoothScrollToEl(c, el, gap, 320);
     }));
   }, [messages]);
 
