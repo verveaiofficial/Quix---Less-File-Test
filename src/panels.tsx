@@ -9,10 +9,40 @@ export const usePinStore = create<any>((set, get) => ({
   toggle: (id: string) => { if (!id) return; const cur: string[] = get().pinned; const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]; try { localStorage.setItem("quix_pinned_v1", JSON.stringify(next)); } catch {} set({ pinned: next }); },
 }));
 export const useImagineStore = create<any>((set) => ({ nonce: 0, bump: () => set((s: any) => ({ nonce: s.nonce + 1 })) }));
+export const useUsagePageStore = create<any>((set) => ({ open: false, openPage: () => set({ open: true }), closePage: () => set({ open: false }) }));
 
-export function shimmer(e: any) { const el = e.currentTarget as HTMLElement; el.classList.remove("shimmer"); void el.offsetWidth; el.classList.add("shimmer"); setTimeout(() => el.classList.remove("shimmer"), 500); }
-export function shimmerThen(e: any, fn: () => void) { shimmer(e); setTimeout(fn, 450); }
+// RIPPLE (replaces shimmer) — GPU-friendly transform/opacity only
+export function shimmer(e: any) {
+  const el = e?.currentTarget as HTMLElement;
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  const d = Math.max(rect.width, rect.height) * 2;
+  const span = document.createElement("span");
+  span.style.position = "absolute";
+  span.style.borderRadius = "50%";
+  span.style.background = "rgba(255,255,255,.35)";
+  span.style.width = span.style.height = d + "px";
+  const cx = e.clientX || rect.left + rect.width / 2;
+  const cy = e.clientY || rect.top + rect.height / 2;
+  span.style.left = cx - rect.left - d / 2 + "px";
+  span.style.top = cy - rect.top - d / 2 + "px";
+  span.style.pointerEvents = "none";
+  span.style.transform = "scale(0)";
+  span.style.opacity = "0.5";
+  if (!el.style.position || el.style.position === "static") el.style.position = "relative";
+  const prevOver = el.style.overflow;
+  el.style.overflow = "hidden";
+  el.appendChild(span);
+  const anim = span.animate([{ transform: "scale(0)", opacity: 0.5 }, { transform: "scale(1)", opacity: 0 }], { duration: 500, easing: "cubic-bezier(.22,.61,.36,1)" });
+  anim.onfinish = () => { span.remove(); el.style.overflow = prevOver; };
+}
+export function shimmerThen(e: any, fn: () => void) { shimmer(e); setTimeout(fn, 250); }
+
 function timeAgo(d: string): string { const diff = Math.max(0, Date.now() - new Date(d).getTime()); const m = Math.floor(diff / 60000); if (m < 1) return "Just now"; if (m < 60) return `${m}m ago`; const h = Math.floor(m / 60); if (h < 24) return `${h}h ago`; return `${Math.floor(h / 24)}d ago`; }
+function msToReset(): number { const n = new Date(); const next = new Date(Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate() + 1, 0, 0, 0, 0)); return next.getTime() - n.getTime(); }
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+const usCSS = `#usage-screen{position:fixed;inset:0;z-index:160;background:#050508;display:flex;flex-direction:column;opacity:0;pointer-events:none;transform:translateY(30px);transition:opacity .35s ease,transform .35s ease}#usage-screen.show{opacity:1;pointer-events:all;transform:translateY(0)}.usage-timer{display:flex;align-items:center;justify-content:space-between;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.12);border-radius:14px;padding:14px 16px}.usage-timer-val{font-family:'Syne',sans-serif;font-weight:700;font-size:18px;color:#fff;letter-spacing:.06em}`;
 
 export function ChatHeader({ hidden }: { hidden?: boolean }) {
   const { chatTitle, setChatTitle, currentChatId, resetChat } = useChatStore();
@@ -159,6 +189,37 @@ export function AuthScreen() {
   );
 }
 
+export function UsagePage() {
+  const open = useUsagePageStore((s) => s.open);
+  const close = useUsagePageStore((s) => s.closePage);
+  const { session } = useAuthStore();
+  const usage = useUsageStore((s) => s.usage);
+  const limitFor = useUsageStore((s) => s.limitFor);
+  const [left, setLeft] = useState(msToReset());
+  useEffect(() => { const t = setInterval(() => setLeft(msToReset()), 1000); return () => clearInterval(t); }, []);
+  const h = Math.floor(left / 3600000); const m = Math.floor((left % 3600000) / 60000); const s = Math.floor((left % 60000) / 1000);
+  return (
+    <>
+      <style>{stCSS}</style>
+      <style>{usCSS}</style>
+      <div id="usage-screen" className={open ? "show" : ""}>
+        <div className="set-header"><button className="set-back" onClick={close} aria-label="Back"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="15 18 9 12 15 6" /></svg></button><div className="set-title">Usage</div></div>
+        <div className="set-body">
+          <div className="usage-timer">
+            <span className="set-label" style={{ fontSize: 12 }}>Resets in</span>
+            <span className="usage-timer-val">{pad2(h)}:{pad2(m)}:{pad2(s)}</span>
+          </div>
+          <div className="set-section">
+            <div className="set-label">Today's usage by model</div>
+            {CHAT_MODELS.map((mdl) => { const lim = limitFor(mdl); const used = usage[mdl] ?? 0; const rem = lim < 0 ? Infinity : Math.max(0, lim - used); return (<div className="limit-row" key={mdl}><div className="limit-top"><span>{MODELS[mdl].name}</span><span>{lim < 0 ? "Unlimited" : lim === 0 ? (session ? "0 left" : "Sign in required") : `${used}/${lim} used · ${rem} left`}</span></div><div className="limit-bar"><div className="limit-fill" style={{ width: lim < 0 ? 100 : lim === 0 ? 0 : `${Math.min(100, (used / lim) * 100)}%` }} /></div></div>); })}
+          </div>
+          <div className="mem-empty">Usage counts reset automatically at midnight UTC.</div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 export function SettingsPage() {
   const { settingsOpen, closeSettings, fontScale, setFontScale, openMemories } = useUIStore();
   const { profile, setProfile } = useProfileStore();
@@ -168,6 +229,7 @@ export function SettingsPage() {
   const loadFor = useMemoryStore((s) => s.loadFor);
   const usage = useUsageStore((s) => s.usage);
   const limitFor = useUsageStore((s) => s.limitFor);
+  const openUsagePage = useUsagePageStore((s) => s.openPage);
   const fileRef = useRef<HTMLInputElement>(null);
   const uid = session?.user?.id ?? null;
   useEffect(() => { if (uid) loadFor(uid); }, [uid, loadFor]);
@@ -221,6 +283,13 @@ export function SettingsPage() {
           <div className="set-section">
             <div className="set-label">Daily message limits</div>
             {CHAT_MODELS.map((m) => { const lim = limitFor(m); const used = usage[m] ?? 0; const rem = lim < 0 ? Infinity : Math.max(0, lim - used); return (<div className="limit-row" key={m}><div className="limit-top"><span>{MODELS[m].name}</span><span>{lim < 0 ? "Unlimited" : lim === 0 ? "Sign in required" : `${rem}/${lim} left`}</span></div><div className="limit-bar"><div className="limit-fill" style={{ width: lim < 0 ? 100 : lim === 0 ? 0 : `${(rem / lim) * 100}%` }} /></div></div>); })}
+            <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openUsagePage())}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></svg>
+                Usage
+              </div>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
+            </button>
             <div className="mem-empty">Limits reset at midnight UTC.</div>
           </div>
           {uid && (
@@ -247,6 +316,7 @@ export function SettingsPage() {
           <div className="watermark">Quix · {APP_VERSION}</div>
         </div>
       </div>
+      <UsagePage />
     </>
   );
 }
