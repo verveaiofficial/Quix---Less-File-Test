@@ -118,7 +118,7 @@ export function MenuDrawer({ hidden }: { hidden?: boolean }) {
             )}
             <div className="profile-row">
               <button className="signin-btn shimmer-btn" style={{ flex: 1 }} onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>Your profile</button>
-              <button className="settings-circle shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })} aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82v-.01a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l.06-.06a2 2 0 1 1 2.83-2.83l-.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
+              <button className="settings-circle shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })} aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82v-.01a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
             </div>
           </div>
         </div>
@@ -442,7 +442,13 @@ export function VoiceCallLayer({ onExit }: { onExit: () => void }) {
 
 // ================= INPUT BAR =================
 const WAVE_BARS = 24;
-const EMPTY_TEMPLATES = ["Teach me hacks", "Psychological tricks", "Cute fashion trends", "Psychology of manipulation", "How to be more productive"];
+const EMPTY_TEMPLATES = [
+  { label: "Teach me hacks", prompt: "Teach me hacks" },
+  { label: "Psychological tricks", prompt: "Psychological tricks" },
+  { label: "Cute trends", prompt: "Teach me cute fashion trends" },
+  { label: "Brainstorm", prompt: "Brainstorm some creative ideas for me" },
+  { label: "Productivity", prompt: "How to be more productive" },
+];
 const ibFastCSS = `.input-wrapper{transition:none !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
 
 export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
@@ -472,6 +478,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const messagesRef = useRef(messages);
   const centerBottomRef = useRef(0);
   const wordRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -491,6 +498,8 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
       const vv = window.visualViewport;
       const kbSize = window.innerHeight - vv.height;
       if (kbSize < 120) {
+        w.classList.remove("kb-open");
+        if (footerRef.current) footerRef.current.classList.remove("kb-hidden");
         if (offsetRef.current !== 0 || forceDownRef.current) {
           offsetRef.current = 0;
           forceDownRef.current = false;
@@ -499,6 +508,8 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
         }
         return;
       }
+      w.classList.add("kb-open");
+      if (footerRef.current) footerRef.current.classList.add("kb-hidden");
       if (forceDownRef.current) return;
       const kbTop = vv.offsetTop + vv.height;
       const wr = w.getBoundingClientRect();
@@ -656,14 +667,16 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
     window.addEventListener("quix-msg-scroll-done", listener);
     dropTimeoutRef.current = setTimeout(finishDrop, 400);
   };
-  const sendTemplate = (t: string) => {
-    if (isSending || finishing) return;
-    stopMic();
-    onSend?.(t, []);
-    setInputValue("");
-    setAttachments([]);
-    if (taRef.current) taRef.current.style.height = "40px";
-    finishDrop();
+  const typeTemplate = (p: string) => {
+    setInputValue(p);
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (ta) {
+        ta.style.height = "40px";
+        ta.style.height = Math.min(ta.scrollHeight, 250) + "px";
+        ta.focus();
+      }
+    });
   };
   const stop = () => { abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
   const mainAction = () => { if (showStop) return stop(); if (finishing) return; if (listening) return finishMic(); if (hasText) return send(); return toggleMic(); };
@@ -671,7 +684,10 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
 
   const emptyStateCSS = `
 @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap');
+.empty-bg{position:absolute;inset:0;background-color:#050508;background-image:radial-gradient(circle at 0% 0%,rgba(255,255,255,.08) 0%,rgba(255,255,255,.03) 25%,transparent 50%),radial-gradient(circle at 100% 100%,rgba(255,255,255,.08) 0%,rgba(255,255,255,.03) 25%,transparent 50%);background-attachment:fixed;pointer-events:none;z-index:0}
 .input-wrapper.empty-state{display:flex !important;flex-direction:column !important;align-items:center !important;background:none !important;padding:0 16px 12px 16px !important}
+.input-wrapper.kb-open{padding-bottom:0 !important}
+.input-wrapper.kb-open .empty-templates{display:none}
 .empty-word{position:relative;font-family:'Syne',sans-serif;font-size:clamp(4rem,21vw,11rem);font-weight:800;line-height:1;letter-spacing:.05em;color:#fff;user-select:none;-webkit-user-select:none;white-space:nowrap;margin:0 0 22px;animation:gBase 2.6s infinite}
 .empty-word .letter{display:inline-block}
 .empty-word::before,.empty-word::after{content:attr(data-text);position:absolute;left:0;top:0;width:100%;opacity:0;pointer-events:none;color:#fff}
@@ -680,10 +696,16 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
 @keyframes gBase{0%,85%,96%,100%{transform:none}86%{transform:translate(-5px,1px) skewX(3deg)}89%{transform:translate(4px,-2px)}92%{transform:translate(-3px,0) skewX(-4deg)}}
 @keyframes gA{0%,84%,96%,100%{opacity:0}85%{opacity:.9;clip-path:inset(6% 0 64% 0);transform:translate(-8px,-3px)}88%{opacity:.9;clip-path:inset(52% 0 12% 0);transform:translate(7px,2px)}91%{opacity:.9;clip-path:inset(28% 0 42% 0);transform:translate(-6px,1px)}94%{opacity:.9;clip-path:inset(72% 0 4% 0);transform:translate(5px,-2px)}}
 @keyframes gB{0%,84%,96%,100%{opacity:0}86%{opacity:.7;clip-path:inset(60% 0 8% 0);transform:translate(8px,3px)}89%{opacity:.7;clip-path:inset(10% 0 66% 0);transform:translate(-7px,-2px)}92%{opacity:.7;clip-path:inset(38% 0 30% 0);transform:translate(6px,-1px)}95%{opacity:.7;clip-path:inset(4% 0 78% 0);transform:translate(-5px,2px)}}
-.empty-templates{width:100%;max-width:650px;margin:16px auto 0;display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
-.tpl-chip{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:11px 18px;font-size:13.5px;font-family:inherit;color:rgba(255,255,255,.92);cursor:pointer;white-space:nowrap;transition:background .15s ease,border-color .15s ease}
+.empty-templates{width:100%;max-width:650px;margin:16px auto 0;display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.tpl-chip{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 16px;font-size:13px;font-family:inherit;color:rgba(255,255,255,.92);cursor:pointer;white-space:nowrap;transition:background .15s ease,border-color .15s ease}
 .tpl-chip:active{background:rgba(255,255,255,.14)}
 @media (hover:hover){.tpl-chip:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.25)}}
+.empty-footer{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;gap:12px;padding:0 16px calc(16px + env(safe-area-inset-bottom,0px));z-index:5;pointer-events:none;transition:opacity .2s ease}
+.empty-footer.kb-hidden{opacity:0}
+.footer-brand{font-family:'Syne',sans-serif;font-weight:700;font-size:14px;letter-spacing:.08em;color:rgba(255,255,255,.6);pointer-events:auto;user-select:none}
+.footer-socials{display:flex;align-items:center;gap:18px;pointer-events:auto}
+.footer-socials a{color:rgba(255,255,255,.45);display:flex;align-items:center;justify-content:center;transition:color .15s ease}
+.footer-socials a:hover,.footer-socials a:active{color:rgba(255,255,255,.9)}
 `;
 
   return (
@@ -693,6 +715,19 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
       <style>{emptyStateCSS}</style>
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
       <input type="file" ref={imgRef} accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
+      {messages.length === 0 && <div className="empty-bg" />}
+      {messages.length === 0 && (
+        <div className="empty-footer" ref={footerRef}>
+          <div className="footer-brand">Verve</div>
+          <div className="footer-socials">
+            <a href="https://discord.gg/6D2EKEYfC3" target="_blank" rel="noopener noreferrer" aria-label="Discord"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.369a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037 19.736 19.736 0 00-4.885 1.515.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 01.077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.099.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" /></svg></a>
+            <a href="https://www.instagram.com/quixai3?igsi=NTdjem9zOXc4Mjli" target="_blank" rel="noopener noreferrer" aria-label="Instagram"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" /><circle cx="12" cy="12" r="4" /><line x1="17.5" y1="6.5" x2="17.51" y2="6.5" /></svg></a>
+            <a href="https://www.reddit.com/u/Quix-AI/s/1MYhtTvmt8" target="_blank" rel="noopener noreferrer" aria-label="Reddit"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="14.5" r="6" /><circle cx="9.7" cy="13.5" r="0.9" fill="currentColor" stroke="none" /><circle cx="14.3" cy="13.5" r="0.9" fill="currentColor" stroke="none" /><path d="M9.7 16.6c1.4.9 3.2.9 4.6 0" /><path d="M12 8.5l.9-3.2 2.8.8" /><circle cx="16.3" cy="6.3" r="1.1" /><circle cx="5.2" cy="13" r="1.5" /><circle cx="18.8" cy="13" r="1.5" /></svg></a>
+            <a href="https://x.com/QuixAI3" target="_blank" rel="noopener noreferrer" aria-label="X"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" /></svg></a>
+            <a href="mailto:verveofficial@atomicmail.io" aria-label="Email"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 6-10 7L2 6" /></svg></a>
+          </div>
+        </div>
+      )}
       <div className={`input-wrapper ${messages.length === 0 ? "empty-state" : ""}`} ref={wrapRef} style={{ bottom: messages.length === 0 ? "calc(50vh - 180px)" : 0 }}>
         {messages.length === 0 && (
           <div className="empty-word" data-text="QUIX" ref={wordRef}>
@@ -759,7 +794,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
         </div>
         {messages.length === 0 && (
           <div className="empty-templates">
-            {EMPTY_TEMPLATES.map((t) => (<button type="button" className="tpl-chip" key={t} onClick={() => sendTemplate(t)}>{t}</button>))}
+            {EMPTY_TEMPLATES.map((t) => (<button type="button" className="tpl-chip" key={t.label} onClick={() => typeTemplate(t.prompt)}>{t.label}</button>))}
           </div>
         )}
       </div>
