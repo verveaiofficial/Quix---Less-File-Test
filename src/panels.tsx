@@ -442,6 +442,7 @@ export function VoiceCallLayer({ onExit }: { onExit: () => void }) {
 
 // ================= INPUT BAR =================
 const WAVE_BARS = 24;
+const EMPTY_TEMPLATES = ["Teach me hacks", "Psychological tricks", "Cute fashion trends", "Psychology of manipulation", "How to be more productive"];
 const ibFastCSS = `.input-wrapper{transition:none !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
 
 export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
@@ -469,6 +470,8 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const offsetRef = useRef(0);
   const forceDownRef = useRef(false);
   const messagesRef = useRef(messages);
+  const centerBottomRef = useRef(0);
+  const wordRef = useRef<HTMLDivElement>(null);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -492,7 +495,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
           offsetRef.current = 0;
           forceDownRef.current = false;
           w.style.removeProperty("transition");
-          w.style.bottom = messagesRef.current.length === 0 ? "calc(45vh - 100px)" : "0px";
+          w.style.bottom = messagesRef.current.length === 0 ? (centerBottomRef.current > 0 ? `${centerBottomRef.current}px` : "calc(50vh - 180px)") : "0px";
         }
         return;
       }
@@ -508,6 +511,33 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  useEffect(() => {
+    if (messages.length !== 0) return;
+    const fit = () => {
+      const word = wordRef.current;
+      const wrap = wrapRef.current;
+      if (!word || !wrap) return;
+      const bar = wrap.querySelector(".input-bar") as HTMLElement | null;
+      if (!bar) return;
+      word.style.fontSize = "";
+      const target = bar.getBoundingClientRect().width;
+      const w = word.getBoundingClientRect().width;
+      if (!target || !w) return;
+      const cur = parseFloat(getComputedStyle(word).fontSize);
+      word.style.fontSize = (cur * target / w) + "px";
+      const S = window.innerHeight;
+      const H = wrap.offsetHeight;
+      centerBottomRef.current = Math.max(10, Math.round((S - H) / 2));
+      if (offsetRef.current === 0 && !forceDownRef.current) wrap.style.bottom = `${centerBottomRef.current}px`;
+    };
+    fit();
+    const raf = requestAnimationFrame(fit);
+    window.addEventListener("resize", fit);
+    let cancelled = false;
+    if (document.fonts && (document.fonts as any).ready) (document.fonts as any).ready.then(() => { if (!cancelled) fit(); });
+    return () => { cancelled = true; window.removeEventListener("resize", fit); cancelAnimationFrame(raf); };
+  }, [messages.length]);
 
   useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
   useEffect(() => { return () => { listeningRef.current = false; try { recRef.current?.stop(); } catch {} if (finishTimeoutRef.current) clearTimeout(finishTimeoutRef.current); if (dropTimeoutRef.current) clearTimeout(dropTimeoutRef.current); if (pendingDropRef.current) { window.removeEventListener("quix-msg-scroll-done", pendingDropRef.current); pendingDropRef.current = null; } }; }, []);
@@ -626,56 +656,34 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
     window.addEventListener("quix-msg-scroll-done", listener);
     dropTimeoutRef.current = setTimeout(finishDrop, 400);
   };
+  const sendTemplate = (t: string) => {
+    if (isSending || finishing) return;
+    stopMic();
+    onSend?.(t, []);
+    setInputValue("");
+    setAttachments([]);
+    if (taRef.current) taRef.current.style.height = "40px";
+    finishDrop();
+  };
   const stop = () => { abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
   const mainAction = () => { if (showStop) return stop(); if (finishing) return; if (listening) return finishMic(); if (hasText) return send(); return toggleMic(); };
   const sendIconKey = showStop ? "stop" : finishing ? "finishing" : listening ? "confirm" : showMic ? "mic" : "arrow";
 
   const emptyStateCSS = `
-.input-wrapper.empty-state {
-  display: flex !important;
-  flex-direction: column !important;
-  align-items: center !important;
-  background: none !important;
-  padding-bottom: 20px !important;
-}
-.quix-glitch {
-  font-family: 'Syne', sans-serif;
-  font-weight: 800;
-  font-size: 80px;
-  letter-spacing: 0.1em;
-  color: #fff;
-  position: relative;
-  user-select: none;
-  margin-bottom: 30px;
-  text-shadow: 0 0 10px rgba(255,255,255,0.5);
-}
-.quix-glitch::before,
-.quix-glitch::after {
-  content: 'QUIX';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-}
-.quix-glitch::before {
-  color: #ff00c8;
-  animation: glitch-effect 3s infinite linear alternate-reverse;
-  z-index: -1;
-}
-.quix-glitch::after {
-  color: #00fff9;
-  animation: glitch-effect 2s infinite linear alternate-reverse;
-  z-index: -2;
-}
-@keyframes glitch-effect {
-  0% { transform: translate(0); }
-  20% { transform: translate(-3px, 3px) skew(-2deg); }
-  40% { transform: translate(-3px, -3px) skew(1deg); }
-  60% { transform: translate(3px, 3px); }
-  80% { transform: translate(3px, -3px) skew(-1deg); }
-  100% { transform: translate(0); }
-}
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap');
+.input-wrapper.empty-state{display:flex !important;flex-direction:column !important;align-items:center !important;background:none !important;padding:0 16px 12px 16px !important}
+.empty-word{position:relative;font-family:'Syne',sans-serif;font-size:clamp(4rem,21vw,11rem);font-weight:800;line-height:1;letter-spacing:.05em;color:#fff;user-select:none;-webkit-user-select:none;white-space:nowrap;margin:0 0 22px;animation:gBase 2.6s infinite}
+.empty-word .letter{display:inline-block}
+.empty-word::before,.empty-word::after{content:attr(data-text);position:absolute;left:0;top:0;width:100%;opacity:0;pointer-events:none;color:#fff}
+.empty-word::before{animation:gA 2.6s infinite steps(1,end)}
+.empty-word::after{color:#666;animation:gB 2.6s infinite steps(1,end)}
+@keyframes gBase{0%,85%,96%,100%{transform:none}86%{transform:translate(-5px,1px) skewX(3deg)}89%{transform:translate(4px,-2px)}92%{transform:translate(-3px,0) skewX(-4deg)}}
+@keyframes gA{0%,84%,96%,100%{opacity:0}85%{opacity:.9;clip-path:inset(6% 0 64% 0);transform:translate(-8px,-3px)}88%{opacity:.9;clip-path:inset(52% 0 12% 0);transform:translate(7px,2px)}91%{opacity:.9;clip-path:inset(28% 0 42% 0);transform:translate(-6px,1px)}94%{opacity:.9;clip-path:inset(72% 0 4% 0);transform:translate(5px,-2px)}}
+@keyframes gB{0%,84%,96%,100%{opacity:0}86%{opacity:.7;clip-path:inset(60% 0 8% 0);transform:translate(8px,3px)}89%{opacity:.7;clip-path:inset(10% 0 66% 0);transform:translate(-7px,-2px)}92%{opacity:.7;clip-path:inset(38% 0 30% 0);transform:translate(6px,-1px)}95%{opacity:.7;clip-path:inset(4% 0 78% 0);transform:translate(-5px,2px)}}
+.empty-templates{width:100%;max-width:650px;margin:16px auto 0;display:flex;flex-wrap:wrap;gap:10px;justify-content:center}
+.tpl-chip{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:11px 18px;font-size:13.5px;font-family:inherit;color:rgba(255,255,255,.92);cursor:pointer;white-space:nowrap;transition:background .15s ease,border-color .15s ease}
+.tpl-chip:active{background:rgba(255,255,255,.14)}
+@media (hover:hover){.tpl-chip:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.25)}}
 `;
 
   return (
@@ -685,8 +693,12 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
       <style>{emptyStateCSS}</style>
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
       <input type="file" ref={imgRef} accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
-      <div className={`input-wrapper ${messages.length === 0 ? "empty-state" : ""}`} ref={wrapRef} style={{ bottom: messages.length === 0 ? "calc(45vh - 100px)" : 0 }}>
-        {messages.length === 0 && <div className="quix-glitch">QUIX</div>}
+      <div className={`input-wrapper ${messages.length === 0 ? "empty-state" : ""}`} ref={wrapRef} style={{ bottom: messages.length === 0 ? "calc(50vh - 180px)" : 0 }}>
+        {messages.length === 0 && (
+          <div className="empty-word" data-text="QUIX" ref={wordRef}>
+            <span className="letter">Q</span><span className="letter">U</span><span className="letter">I</span><span className="letter">X</span>
+          </div>
+        )}
         <div className={`input-bar ${listening ? "listening" : ""}`}>
           {!isDeepThink && attachments.length > 0 && (<div className="attach-row">{attachments.map((a) => (<div className="attach-chip" key={a.id}>{a.kind === "image" && a.previewUrl ? <img className="attach-thumb" src={a.previewUrl} alt={a.name} /> : null}<span>{a.name}</span><button className="attach-remove" onClick={() => setAttachments((p) => p.filter((x) => x.id !== a.id))}>×</button></div>))}</div>)}
           {listening ? (
@@ -745,6 +757,11 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
             </div>
           </div>
         </div>
+        {messages.length === 0 && (
+          <div className="empty-templates">
+            {EMPTY_TEMPLATES.map((t) => (<button type="button" className="tpl-chip" key={t} onClick={() => sendTemplate(t)}>{t}</button>))}
+          </div>
+        )}
       </div>
     </>
   );
