@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { create } from "zustand";
 import { MODELS, CHAT_MODELS, APP_VERSION, useAuthStore, useUIStore, useChatStore, useProfileStore, useMemoryStore, useUsageStore, supabase, fetchChats, fetchMessages, renameChat, deleteChat, abortGemini } from "./core";
-import { useCanvasStore, extractFiles, PendingAttachment, readFileAsAttachment, BubbleIndicator } from "./components";
+import { useCanvasStore, extractFiles, PendingAttachment, readFileAsAttachment } from "./components";
 import { ORB_COLORS, hdCSS, dwCSS, auCSS, stCSS, mmCSS, ldCSS, dtCSS, vcCSS, ibCSS, lockSvg } from "./styles";
 
 export const usePinStore = create<any>((set, get) => ({
@@ -71,7 +71,7 @@ export function ChatHeader({ hidden }: { hidden?: boolean }) {
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); openFilesList(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Files in this chat</div>
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); resetChat(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>New chat</div>
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); if (currentChatId) togglePin(currentChatId); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 17v5" /><path d="M9 3h6l1 7 2 2H6l2-2z" /></svg>{isPinned ? "Unpin chat" : "Pin chat"}</div>
-        <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); setRenameVal(chatTitle); setRenameOpen(true); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>Rename chat</div>
+        <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); setRenameVal(chatTitle); setRenameOpen(true); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>Rename chat</div>
         <div className="chat-opt danger shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); if (session && currentChatId) deleteChat(currentChatId); resetChat(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>Delete chat</div>
       </div>
       <div id="rename-modal" className={renameOpen ? "show" : ""} onClick={() => setRenameOpen(false)}>
@@ -550,6 +550,47 @@ export function CanvasPanel({ onFileSelect }: { onFileSelect: (f: File) => void 
   );
 }
 
+export function LoadingScreen() {
+  const loaderRef = useRef<HTMLDivElement>(null); const centerRef = useRef<HTMLDivElement>(null); const canvasRef = useRef<HTMLCanvasElement>(null); const labelRef = useRef<HTMLDivElement>(null); const brandRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const canvas = canvasRef.current; if (!canvas) return; const ctx = canvas.getContext("2d"); if (!ctx) return;
+    const W = 185, H = 185, R = 92, cx = 92, cy = 92; const INTRO_MS = 1500;
+    const blobs = ORB_COLORS.map((color, i) => ({ fx: 0.71 + i * 0.09, fy: 1.13 - i * 0.05, phase: i * 0.9, amp: 0.5, r: 80 - i * 2, color }));
+    const KF = [{ p: 0.0, oy: -170, rx: 38, ry: 52 }, { p: 0.32, oy: -8, rx: 36, ry: 58 }, { p: 0.46, oy: 4, rx: 118, ry: 42 }, { p: 0.68, oy: 0, rx: 96, ry: 88 }, { p: 1.0, oy: 0, rx: 92, ry: 92 }];
+    const easeInCubic = (t: number) => t * t * t; const easeOutCubic = (t: number) => 1 - Math.pow(1 - t, 3); const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+    const getClip = (p: number) => { let a = KF[0], b = KF[1]; for (let i = 0; i < KF.length - 1; i++) { if (p >= KF[i].p && p <= KF[i + 1].p) { a = KF[i]; b = KF[i + 1]; break; } } const span = b.p - a.p; const local = span === 0 ? 1 : (p - a.p) / span; const e = p < 0.44 ? easeInCubic(local) : easeOutCubic(local); return { oy: lerp(a.oy, b.oy, e), rx: lerp(a.rx, b.rx, e), ry: lerp(a.ry, b.ry, e) }; };
+    const clipShape = (c: CanvasRenderingContext2D, ecx: number, ecy: number, rx: number, ry: number, fall: number) => { c.beginPath(); if (fall > 0.05) { const pointY = ecy - ry * 1.35; c.arc(ecx, ecy + ry * 0.1, ry * fall * 1.1 + rx * (1 - fall), Math.PI * 0.15, Math.PI * 0.85); c.bezierCurveTo(ecx - rx * 0.8, ecy - ry * 0.3, ecx - rx * 0.15, pointY + ry * 0.3, ecx, pointY); c.bezierCurveTo(ecx + rx * 0.15, pointY + ry * 0.3, ecx + rx * 0.8, ecy - ry * 0.3, ecx + rx * ((ry * fall * 1.1 + rx * (1 - fall)) / rx) * 0.95, ecy + ry * 0.1 - ry * fall); c.closePath(); } else { c.ellipse(ecx, ecy, rx, ry, 0, 0, Math.PI * 2); } };
+    let bt = 0, last = performance.now(), id = 0; let introStart: number | null = null, introDone = false;
+    const frame = (now: number) => {
+      const dt = now - last; last = now;
+      const s = (Math.sin(((now % 5000) / 5000) * Math.PI * 2 - Math.PI / 2) + 1) / 2;
+      bt += (0.12 + (2.2 - 0.12) * s) * dt * 0.001;
+      ctx.clearRect(0, 0, W, H); ctx.save();
+      if (!introDone) { if (introStart === null) introStart = now; const p = Math.min(1, (now - introStart) / INTRO_MS); const { oy, rx, ry } = getClip(p); const fall = Math.max(0, Math.min(1, -oy / 140)); ctx.beginPath(); clipShape(ctx, cx, cy + oy, rx, ry, fall); ctx.clip(); if (p >= 1) { introDone = true; labelRef.current?.classList.add("show"); brandRef.current?.classList.add("show"); } } else { ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip(); }
+      const bg = ctx.createRadialGradient(cx * 0.84, cy * 0.76, 4, cx, cy, R); bg.addColorStop(0, "#1a1a2e"); bg.addColorStop(0.3, "#0f1f3d"); bg.addColorStop(0.55, "#2a1b4d"); bg.addColorStop(0.8, "#3d1f4d"); bg.addColorStop(1, "#0f2a3d"); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = "screen";
+      blobs.forEach((b) => { const bx = cx + Math.sin(b.fx * bt + b.phase) * R * b.amp; const by = cy + Math.cos(b.fy * bt + b.phase * 1.4) * R * b.amp; const br = b.r * (1 + 0.08 * Math.sin(b.fx * bt * 2.3 + b.phase)); const g = ctx.createRadialGradient(bx, by, 0, bx, by, br); g.addColorStop(0, b.color + "cc"); g.addColorStop(0.35, b.color + "88"); g.addColorStop(0.7, b.color + "33"); g.addColorStop(1, b.color + "00"); ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill(); });
+      ctx.restore(); id = requestAnimationFrame(frame);
+    };
+    let startTimer: any = null; let slideTimer: any = null;
+    startTimer = setTimeout(() => { centerRef.current?.classList.add("drop"); last = performance.now(); id = requestAnimationFrame(frame); }, 1000);
+    slideTimer = setTimeout(() => { loaderRef.current?.classList.add("slide-out"); }, 6500);
+    return () => { clearTimeout(startTimer); clearTimeout(slideTimer); cancelAnimationFrame(id); };
+  }, []);
+  return (
+    <>
+      <style>{ldCSS}</style>
+      <div id="loader" ref={loaderRef}>
+        <div className="ld-center" ref={centerRef}>
+          <canvas ref={canvasRef} width={185} height={185} />
+          <div className="quix-label" ref={labelRef}>QUIX</div>
+        </div>
+        <div className="verve-brand" ref={brandRef}>from <span>Verve</span></div>
+      </div>
+    </>
+  );
+}
+
 export function DeepThinkLayer({ frameRef }: { frameRef: React.RefObject<HTMLIFrameElement> }) {
   return (<><style>{dtCSS}</style><iframe ref={frameRef} className="dt-frame" src="https://quix-deepthink.lovable.app" title="DeepThink" /></>);
 }
@@ -561,28 +602,6 @@ export function VoiceCallLayer({ onExit }: { onExit: () => void }) {
       <div className="voice-call-layer">
         <button className="voice-call-exit" onClick={onExit} aria-label="Exit voice call"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>
         <iframe className="voice-call-frame" src="https://quix-voice.vercel.app/" title="Voice Call" allow="microphone; camera" allowUserMedia />
-      </div>
-    </>
-  );
-}
-
-export function LoadingScreen() {
-  const [dropped, setDropped] = useState(false);
-  const [showLabel, setShowLabel] = useState(false);
-  useEffect(() => {
-    const t1 = setTimeout(() => setShowLabel(true), 500);
-    const t2 = setTimeout(() => setDropped(true), 1200);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, []);
-  return (
-    <>
-      <style>{ldCSS}</style>
-      <div id="loader">
-        <div className={`ld-center ${dropped ? "drop" : ""}`}>
-          <BubbleIndicator size={80} />
-          <div className={`quix-label ${showLabel ? "show" : ""}`}>QUIX</div>
-        </div>
-        <div className={`verve-brand ${showLabel ? "show" : ""}`}><span>Verve</span></div>
       </div>
     </>
   );
