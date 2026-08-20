@@ -468,6 +468,8 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const spinDir = useRef(1);
   const offsetRef = useRef(0);
   const forceDownRef = useRef(false);
+  const messagesRef = useRef(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -490,7 +492,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
           offsetRef.current = 0;
           forceDownRef.current = false;
           w.style.removeProperty("transition");
-          w.style.bottom = "0px";
+          w.style.bottom = messagesRef.current.length === 0 ? "calc(45vh - 100px)" : "0px";
         }
         return;
       }
@@ -628,13 +630,63 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const mainAction = () => { if (showStop) return stop(); if (finishing) return; if (listening) return finishMic(); if (hasText) return send(); return toggleMic(); };
   const sendIconKey = showStop ? "stop" : finishing ? "finishing" : listening ? "confirm" : showMic ? "mic" : "arrow";
 
+  const emptyStateCSS = `
+.input-wrapper.empty-state {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  background: none !important;
+  padding-bottom: 20px !important;
+}
+.quix-glitch {
+  font-family: 'Syne', sans-serif;
+  font-weight: 800;
+  font-size: 80px;
+  letter-spacing: 0.1em;
+  color: #fff;
+  position: relative;
+  user-select: none;
+  margin-bottom: 30px;
+  text-shadow: 0 0 10px rgba(255,255,255,0.5);
+}
+.quix-glitch::before,
+.quix-glitch::after {
+  content: 'QUIX';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+.quix-glitch::before {
+  color: #ff00c8;
+  animation: glitch-effect 3s infinite linear alternate-reverse;
+  z-index: -1;
+}
+.quix-glitch::after {
+  color: #00fff9;
+  animation: glitch-effect 2s infinite linear alternate-reverse;
+  z-index: -2;
+}
+@keyframes glitch-effect {
+  0% { transform: translate(0); }
+  20% { transform: translate(-3px, 3px) skew(-2deg); }
+  40% { transform: translate(-3px, -3px) skew(1deg); }
+  60% { transform: translate(3px, 3px); }
+  80% { transform: translate(3px, -3px) skew(-1deg); }
+  100% { transform: translate(0); }
+}
+`;
+
   return (
     <>
       <style>{ibCSS}</style>
       <style>{ibFastCSS}</style>
+      <style>{emptyStateCSS}</style>
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
       <input type="file" ref={imgRef} accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
-      <div className="input-wrapper" ref={wrapRef} style={{ bottom: 0 }}>
+      <div className={`input-wrapper ${messages.length === 0 ? "empty-state" : ""}`} ref={wrapRef} style={{ bottom: messages.length === 0 ? "calc(45vh - 100px)" : 0 }}>
+        {messages.length === 0 && <div className="quix-glitch">QUIX</div>}
         <div className={`input-bar ${listening ? "listening" : ""}`}>
           {!isDeepThink && attachments.length > 0 && (<div className="attach-row">{attachments.map((a) => (<div className="attach-chip" key={a.id}>{a.kind === "image" && a.previewUrl ? <img className="attach-thumb" src={a.previewUrl} alt={a.name} /> : null}<span>{a.name}</span><button className="attach-remove" onClick={() => setAttachments((p) => p.filter((x) => x.id !== a.id))}>×</button></div>))}</div>)}
           {listening ? (
