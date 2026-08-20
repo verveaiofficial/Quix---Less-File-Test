@@ -13,6 +13,7 @@ export const useUsagePageStore = create<any>((set) => ({ open: false, openPage: 
 export const useScreenPageStore = create<any>((set) => ({ open: false, openPage: () => set({ open: true }), closePage: () => set({ open: false }) }));
 
 const rippleCSS = `.qx-ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.45);opacity:.6;transform:scale(0);animation:qx-rip .55s ease-out forwards;pointer-events:none}@keyframes qx-rip{to{transform:scale(1);opacity:0}}`;
+const hdOverrideCSS = `#chat-header{background:transparent !important;backdrop-filter:blur(12px) saturate(150%);-webkit-backdrop-filter:blur(12px) saturate(150%)}`;
 export function shimmer(e: any) {
   const el = e?.currentTarget as HTMLElement;
   if (!el) return;
@@ -59,6 +60,7 @@ export function ChatHeader({ hidden }: { hidden?: boolean }) {
   return (
     <>
       <style>{hdCSS}</style>
+      <style>{hdOverrideCSS}</style>
       <style>{rippleCSS}</style>
       <div id="chat-header">
         <div style={{ width: 36, flexShrink: 0 }} />
@@ -402,7 +404,7 @@ export function LoadingScreen() {
       if (!introDone) { if (introStart === null) introStart = now; const p = Math.min(1, (now - introStart) / INTRO_MS); const { oy, rx, ry } = getClip(p); const fall = Math.max(0, Math.min(1, -oy / 140)); ctx.beginPath(); clipShape(ctx, cx, cy + oy, rx, ry, fall); ctx.clip(); if (p >= 1) { introDone = true; labelRef.current?.classList.add("show"); brandRef.current?.classList.add("show"); } } else { ctx.beginPath(); ctx.arc(cx, cy, R, 0, Math.PI * 2); ctx.clip(); }
       const bg = ctx.createRadialGradient(cx * 0.84, cy * 0.76, 4, cx, cy, R); bg.addColorStop(0, "#1a1a2e"); bg.addColorStop(0.3, "#0f1f3d"); bg.addColorStop(0.55, "#2a1b4d"); bg.addColorStop(0.8, "#3d1f4d"); bg.addColorStop(1, "#0f2a3d"); ctx.fillStyle = bg; ctx.fillRect(0, 0, W, H);
       ctx.globalCompositeOperation = "screen";
-      blobs.forEach((b) => { const bx = cx + Math.sin(b.fx * bt + b.phase) * R * b.amp; const by = cy + Math.cos(b.fy * bt + b.phase * 1.4) * R * b.amp; const br = b.r * (1 + 0.08 * Math.sin(b.fx * bt * 2.3 + b.phase)); const g = ctx.createRadialGradient(bx, by, 0, bx, by, br); g.addColorStop(0, b.color + "cc"); g.addColorStop(0.35, b.color + "88"); g.addColorStop(0.7, b.color + "33"); g.addColorStop(1, b.color + "00"); ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill(); });
+      blobs.forEach((b) => { const bx = cx + Math.sin(b.fx * bt + b.phase) * R * 0.5; const by = cy + Math.cos(b.fy * bt + b.phase * 1.4) * R * b.amp; const br = b.r * (1 + 0.08 * Math.sin(b.fx * bt * 2.3 + b.phase)); const g = ctx.createRadialGradient(bx, by, 0, bx, by, br); g.addColorStop(0, b.color + "cc"); g.addColorStop(0.35, b.color + "88"); g.addColorStop(0.7, b.color + "33"); g.addColorStop(1, b.color + "00"); ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fillStyle = g; ctx.fill(); });
       ctx.restore(); id = requestAnimationFrame(frame);
     };
     let startTimer: any = null; let slideTimer: any = null;
@@ -477,6 +479,7 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const forceDownRef = useRef(false);
   const messagesRef = useRef(messages);
   const centerBottomRef = useRef(0);
+  const baseHeightRef = useRef(typeof window !== "undefined" ? window.innerHeight : 0);
   const wordRef = useRef<HTMLDivElement>(null);
   const footerRef = useRef<HTMLDivElement>(null);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
@@ -496,8 +499,9 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
       const w = wrapRef.current;
       if (!w || !window.visualViewport) return;
       const vv = window.visualViewport;
-      const kbSize = window.innerHeight - vv.height;
+      const kbSize = Math.max(window.innerHeight - vv.height, baseHeightRef.current - window.innerHeight);
       if (kbSize < 120) {
+        baseHeightRef.current = window.innerHeight;
         w.classList.remove("kb-open");
         if (footerRef.current) footerRef.current.classList.remove("kb-hidden");
         if (offsetRef.current !== 0 || forceDownRef.current) {
@@ -696,8 +700,8 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
 @keyframes gBase{0%,85%,96%,100%{transform:none}86%{transform:translate(-5px,1px) skewX(3deg)}89%{transform:translate(4px,-2px)}92%{transform:translate(-3px,0) skewX(-4deg)}}
 @keyframes gA{0%,84%,96%,100%{opacity:0}85%{opacity:.9;clip-path:inset(6% 0 64% 0);transform:translate(-8px,-3px)}88%{opacity:.9;clip-path:inset(52% 0 12% 0);transform:translate(7px,2px)}91%{opacity:.9;clip-path:inset(28% 0 42% 0);transform:translate(-6px,1px)}94%{opacity:.9;clip-path:inset(72% 0 4% 0);transform:translate(5px,-2px)}}
 @keyframes gB{0%,84%,96%,100%{opacity:0}86%{opacity:.7;clip-path:inset(60% 0 8% 0);transform:translate(8px,3px)}89%{opacity:.7;clip-path:inset(10% 0 66% 0);transform:translate(-7px,-2px)}92%{opacity:.7;clip-path:inset(38% 0 30% 0);transform:translate(6px,-1px)}95%{opacity:.7;clip-path:inset(4% 0 78% 0);transform:translate(-5px,2px)}}
-.empty-templates{width:100%;max-width:650px;margin:16px auto 0;display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
-.tpl-chip{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 16px;font-size:13px;font-family:inherit;color:rgba(255,255,255,.92);cursor:pointer;white-space:nowrap;transition:background .15s ease,border-color .15s ease}
+.empty-templates{width:100%;max-width:650px;margin:14px auto 0;display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.tpl-chip{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 12px;font-size:12.5px;font-family:inherit;color:rgba(255,255,255,.92);cursor:pointer;white-space:nowrap;transition:background .15s ease,border-color .15s ease}
 .tpl-chip:active{background:rgba(255,255,255,.14)}
 @media (hover:hover){.tpl-chip:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.25)}}
 .empty-footer{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;gap:12px;padding:0 16px calc(16px + env(safe-area-inset-bottom,0px));z-index:5;pointer-events:none;transition:opacity .2s ease}
