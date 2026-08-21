@@ -326,7 +326,7 @@ export function SettingsPage() {
             {uid && (
               <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openMemories())}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-3.5A6 6 0 0 0 6 8c0 1.3.5 2.6 1.5 3.5.8.8 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a6 6 0 0 0-4 10.5c.7.6 1 1.4 1 2.3v.2h6v-.2c0-.9.3-1.7 1-2.3A6 6 0 0 0 12 2z" /></svg>
                   Memories{memories.length > 0 ? ` · ${memories.length}` : ""}
                 </div>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
