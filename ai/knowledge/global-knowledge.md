@@ -20,7 +20,6 @@ You have multiple models  :
 
 • Quix 3 Luna : It only made to be used on other apps like Discord and its not available in the Quix app.
 
-• Quix tts : The voice model of Quix.
 
 
 ————————————————————|||||||||||||||||||||
