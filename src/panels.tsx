@@ -13,6 +13,7 @@ export const useUsagePageStore = create<any>((set) => ({ open: false, openPage: 
 export const useScreenPageStore = create<any>((set) => ({ open: false, openPage: () => set({ open: true }), closePage: () => set({ open: false }) }));
 
 const rippleCSS = `.qx-ripple{position:absolute;border-radius:50%;background:rgba(255,255,255,.45);opacity:.6;transform:scale(0);animation:qx-rip .55s ease-out forwards;pointer-events:none}@keyframes qx-rip{to{transform:scale(1);opacity:0}}`;
+const hdOverrideCSS = `#chat-header{background:transparent !important;backdrop-filter:blur(12px) saturate(150%);-webkit-backdrop-filter:blur(12px) saturate(150%)}`;
 export function shimmer(e: any) {
   const el = e?.currentTarget as HTMLElement;
   if (!el) return;
@@ -59,6 +60,7 @@ export function ChatHeader({ hidden }: { hidden?: boolean }) {
   return (
     <>
       <style>{hdCSS}</style>
+      <style>{hdOverrideCSS}</style>
       <style>{rippleCSS}</style>
       <div id="chat-header">
         <div style={{ width: 36, flexShrink: 0 }} />
@@ -69,7 +71,7 @@ export function ChatHeader({ hidden }: { hidden?: boolean }) {
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); openFilesList(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z" /></svg>Files in this chat</div>
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); resetChat(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" /></svg>New chat</div>
         <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); if (currentChatId) togglePin(currentChatId); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 17v5" /><path d="M9 3h6l1 7 2 2H6l2-2z" /></svg>{isPinned ? "Unpin chat" : "Pin chat"}</div>
-        <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); setRenameVal(chatTitle); setRenameOpen(true); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>Rename chat</div>
+        <div className="chat-opt shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); setRenameVal(chatTitle); setRenameOpen(true); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>Rename chat</div>
         <div className="chat-opt danger shimmer-btn" onClick={(e) => { e.stopPropagation(); shimmerThen(e, () => { setOptOpen(false); if (session && currentChatId) deleteChat(currentChatId); resetChat(); }); }}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" /><path d="M10 11v6M14 11v6" /><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" /></svg>Delete chat</div>
       </div>
       <div id="rename-modal" className={renameOpen ? "show" : ""} onClick={() => setRenameOpen(false)}>
@@ -118,7 +120,7 @@ export function MenuDrawer({ hidden }: { hidden?: boolean }) {
             )}
             <div className="profile-row">
               <button className="signin-btn shimmer-btn" style={{ flex: 1 }} onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>Your profile</button>
-              <button className="settings-circle shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })} aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82v-.01a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l.06-.06a2 2 0 1 1 2.83-2.83l-.06.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
+              <button className="settings-circle shimmer-btn" onClick={(e) => shimmerThen(e, () => { setDrawerOpen(false); setTimeout(() => openSettingsFromDrawer(), 150); })} aria-label="Settings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82v-.01a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l.06-.06a2 2 0 1 1 2.83-2.83l.06-.06a1.65 1.65 0 0 0 1.82.33h.01a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.01a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.01a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" /></svg></button>
             </div>
           </div>
         </div>
@@ -324,7 +326,7 @@ export function SettingsPage() {
             {uid && (
               <button className="new-btn shimmer-btn" style={{ justifyContent: 'space-between' }} onClick={(e) => shimmerThen(e, () => openMemories())}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1.3.5 2.6 1.5 3.5.8.8 1.3 1.5 1.5 2.5" /><path d="M9 18h6" /><path d="M10 22h4" /></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18h6" /><path d="M10 22h4" /><path d="M12 2a6 6 0 0 0-4 10.5c.7.6 1 1.4 1 2.3v.2h6v-.2c0-.9.3-1.7 1-2.3A6 6 0 0 0 12 2z" /></svg>
                   Memories{memories.length > 0 ? ` · ${memories.length}` : ""}
                 </div>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
@@ -379,6 +381,171 @@ export function MemoriesPage() {
           ) : (<div className="mem-empty">Sign in to use memories.</div>)}
         </div>
       </div>
+    </>
+  );
+}
+
+export function CanvasPanel({ onFileSelect }: { onFileSelect: (f: File) => void }) {
+  const { canvasOn, setCanvasOn } = useCanvasStore();
+  const [canvas, setCanvas] = useState<HTMLCanvasElement | null>(null);
+  const [drawing, setDrawing] = useState(false);
+  const [path, setPath] = useState<string[]>([]);
+  const [lastX, setLastX] = useState(0);
+  const [lastY, setLastY] = useState(0);
+
+  useEffect(() => {
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const handleMouseDown = (e: MouseEvent) => {
+      setDrawing(true);
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setLastX(x);
+      setLastY(y);
+      path.push(`M ${x} ${y}`);
+      setPath([...path]);
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!drawing) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      path.push(`L ${x} ${y}`);
+      setPath([...path]);
+      const lineCap = "round";
+      const lineWidth = 3;
+      const color = "#fff";
+
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(x, y);
+      ctx.lineCap = lineCap;
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+
+      setLastX(x);
+      setLastY(y);
+    };
+
+    const handleMouseUp = () => {
+      setDrawing(false);
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      setLastX(x);
+      setLastY(y);
+      path.push(`M ${x} ${y}`);
+      setPath([...path]);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      const touch = e.touches[0];
+      const rect = canvas.getBoundingClientRect();
+      const x = touch.clientX - rect.left;
+      const y = touch.clientY - rect.top;
+      path.push(`L ${x} ${y}`);
+      setPath([...path]);
+
+      const lineCap = "round";
+      const lineWidth = 3;
+      const color = "#fff";
+
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(x, y);
+      ctx.lineCap = lineCap;
+      ctx.lineWidth = lineWidth;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+
+      setLastX(x);
+      setLastY(y);
+    };
+
+    const handleTouchEnd = () => {
+      setDrawing(false);
+    };
+
+    canvas.addEventListener("mousedown", handleMouseDown);
+    canvas.addEventListener("mousemove", handleMouseMove);
+    canvas.addEventListener("mouseup", handleMouseUp);
+    canvas.addEventListener("touchstart", handleTouchStart);
+    canvas.addEventListener("touchmove", handleTouchMove);
+    canvas.addEventListener("touchend", handleTouchEnd);
+
+    return () => {
+      canvas.removeEventListener("mousedown", handleMouseDown);
+      canvas.removeEventListener("mousemove", handleMouseMove);
+      canvas.removeEventListener("mouseup", handleMouseUp);
+      canvas.removeEventListener("touchstart", handleTouchStart);
+      canvas.removeEventListener("touchmove", handleTouchMove);
+      canvas.removeEventListener("touchend", handleTouchEnd);
+    };
+  }, [canvas, drawing, path]);
+
+  const clearCanvas = () => {
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setPath([]);
+  };
+
+  const downloadCanvas = () => {
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL("image/png");
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = "quix-canvas.png";
+    link.click();
+  };
+
+  const saveCanvas = () => {
+    if (!canvas) return;
+    const dataUrl = canvas.toDataURL("image/png");
+    fetch("/api/save-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ image: dataUrl }),
+    }).then(() => alert("Image saved!"));
+  };
+
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const openFilesList = useCanvasStore((s) => s.openFilesList);
+  const openFiles = () => {
+    if (fileRef.current) fileRef.current.click();
+  };
+
+  return (
+    <>
+      <style>{cvCSS}</style>
+      <div id="canvas-panel" className={canvasOn ? "open" : ""}>
+        <div className="canvas-inner">
+          <div className="canvas-controls">
+            <button className="btn btn-small" onClick={openFiles}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><polyline points="21 15 16 10 5 21" /></svg>Upload image</button>
+            <button className="btn btn-small" onClick={clearCanvas}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" /></svg>Clear</button>
+            <button className="btn btn-small" onClick={downloadCanvas}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3" /></svg>Download</button>
+            <button className="btn btn-small" onClick={saveCanvas}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2z" /><polyline points="17 21 17 13 7 13 7 21" /><polyline points="7 3 7 8 15 8" /></svg>Save</button>
+            <button className="btn btn-small" onClick={() => setCanvasOn(false)}><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg>Close</button>
+          </div>
+          <div className="canvas-area">
+            <canvas ref={setCanvas} width={600} height={400} style={{ background: '#1c1c20', border: '1px solid #444' }} />
+          </div>
+        </div>
+      </div>
+      <input type="file" accept="image/*" ref={fileRef} style={{ display: "none" }} onChange={(e) => { const f = e.target.files?.[0]; if (f) onFileSelect(f); e.target.value = ""; }} />
     </>
   );
 }
@@ -442,6 +609,13 @@ export function VoiceCallLayer({ onExit }: { onExit: () => void }) {
 
 // ================= INPUT BAR =================
 const WAVE_BARS = 24;
+const EMPTY_TEMPLATES = [
+  { label: "Cute trends", prompt: "Teach me cute fashion trends" },
+  { label: "Brainstorm", prompt: "Brainstorm some creative ideas for me" },
+  { label: "Productivity", prompt: "How to be more productive" },
+  { label: "Teach me hacks", prompt: "Teach me hacks" },
+  { label: "Psychological tricks", prompt: "Psychological tricks" },
+];
 const ibFastCSS = `.input-wrapper{transition:none !important}.input-bar,.pop-menu,.voice-wave,.attach-row,.attach-chip,.morph-icon,.send-btn,.plus-btn,.model-btn,.cv-pill{transition-duration:.12s !important}`;
 
 export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: PendingAttachment[]) => void; isDeepThink?: boolean }) {
@@ -468,6 +642,12 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
   const spinDir = useRef(1);
   const offsetRef = useRef(0);
   const forceDownRef = useRef(false);
+  const messagesRef = useRef(messages);
+  const centerBottomRef = useRef(0);
+  const baseHeightRef = useRef(typeof window !== "undefined" ? window.innerHeight : 0);
+  const wordRef = useRef<HTMLDivElement>(null);
+  const footerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
   const wrapRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -484,16 +664,21 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
       const w = wrapRef.current;
       if (!w || !window.visualViewport) return;
       const vv = window.visualViewport;
-      const kbSize = window.innerHeight - vv.height;
+      const kbSize = Math.max(window.innerHeight - vv.height, baseHeightRef.current - window.innerHeight);
       if (kbSize < 120) {
+        baseHeightRef.current = window.innerHeight;
+        w.classList.remove("kb-open");
+        if (footerRef.current) footerRef.current.classList.remove("kb-hidden");
         if (offsetRef.current !== 0 || forceDownRef.current) {
           offsetRef.current = 0;
           forceDownRef.current = false;
           w.style.removeProperty("transition");
-          w.style.bottom = "0px";
+          w.style.bottom = messagesRef.current.length === 0 ? (centerBottomRef.current > 0 ? `${centerBottomRef.current}px` : "calc(50vh - 180px)") : "0px";
         }
         return;
       }
+      w.classList.add("kb-open");
+      if (footerRef.current) footerRef.current.classList.add("kb-hidden");
       if (forceDownRef.current) return;
       const kbTop = vv.offsetTop + vv.height;
       const wr = w.getBoundingClientRect();
@@ -506,6 +691,33 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, []);
+
+  useEffect(() => {
+    if (messages.length !== 0) return;
+    const fit = () => {
+      const word = wordRef.current;
+      const wrap = wrapRef.current;
+      if (!word || !wrap) return;
+      const bar = wrap.querySelector(".input-bar") as HTMLElement | null;
+      if (!bar) return;
+      word.style.fontSize = "";
+      const target = bar.getBoundingClientRect().width;
+      const w = word.getBoundingClientRect().width;
+      if (!target || !w) return;
+      const cur = parseFloat(getComputedStyle(word).fontSize);
+      word.style.fontSize = (cur * target / w) + "px";
+      const S = window.innerHeight;
+      const H = wrap.offsetHeight;
+      centerBottomRef.current = Math.max(10, Math.round((S - H) / 2));
+      if (offsetRef.current === 0 && !forceDownRef.current) wrap.style.bottom = `${centerBottomRef.current}px`;
+    };
+    fit();
+    const raf = requestAnimationFrame(fit);
+    window.addEventListener("resize", fit);
+    let cancelled = false;
+    if (document.fonts && (document.fonts as any).ready) (document.fonts as any).ready.then(() => { if (!cancelled) fit(); });
+    return () => { cancelled = true; window.removeEventListener("resize", fit); cancelAnimationFrame(raf); };
+  }, [messages.length]);
 
   useEffect(() => { const g = () => { setMenuOpen(false); setModelMenuOpen(false); }; document.addEventListener("click", g); return () => document.removeEventListener("click", g); }, []);
   useEffect(() => { return () => { listeningRef.current = false; try { recRef.current?.stop(); } catch {} if (finishTimeoutRef.current) clearTimeout(finishTimeoutRef.current); if (dropTimeoutRef.current) clearTimeout(dropTimeoutRef.current); if (pendingDropRef.current) { window.removeEventListener("quix-msg-scroll-done", pendingDropRef.current); pendingDropRef.current = null; } }; }, []);
@@ -624,17 +836,73 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
     window.addEventListener("quix-msg-scroll-done", listener);
     dropTimeoutRef.current = setTimeout(finishDrop, 400);
   };
+  const typeTemplate = (p: string) => {
+    setInputValue(p);
+    requestAnimationFrame(() => {
+      const ta = taRef.current;
+      if (ta) {
+        ta.style.height = "40px";
+        ta.style.height = Math.min(ta.scrollHeight, 250) + "px";
+        ta.focus();
+      }
+    });
+  };
   const stop = () => { abortGemini(); window.dispatchEvent(new Event("quix-stop")); useChatStore.getState().setIsSending(false); };
   const mainAction = () => { if (showStop) return stop(); if (finishing) return; if (listening) return finishMic(); if (hasText) return send(); return toggleMic(); };
   const sendIconKey = showStop ? "stop" : finishing ? "finishing" : listening ? "confirm" : showMic ? "mic" : "arrow";
+
+  const emptyStateCSS = `
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&display=swap');
+.empty-bg{position:absolute;left:0;right:0;top:-64px;bottom:0;background-color:#050508;background-image:radial-gradient(circle at 0% 0%,rgba(255,255,255,.08) 0%,rgba(255,255,255,.03) 25%,transparent 50%),radial-gradient(circle at 100% 100%,rgba(255,255,255,.08) 0%,rgba(255,255,255,.03) 25%,transparent 50%);background-attachment:fixed;pointer-events:none;z-index:0}
+.input-wrapper.empty-state{display:flex !important;flex-direction:column !important;align-items:center !important;background:none !important;padding:0 16px 12px 16px !important}
+.input-wrapper.kb-open{padding-bottom:0 !important}
+.input-wrapper.kb-open .empty-templates{display:none}
+.empty-word{position:relative;font-family:'Syne',sans-serif;font-size:clamp(4rem,21vw,11rem);font-weight:800;line-height:1;letter-spacing:.05em;color:#fff;user-select:none;-webkit-user-select:none;white-space:nowrap;margin:0 0 22px;animation:gBase 2.6s infinite}
+.empty-word .letter{display:inline-block}
+.empty-word::before,.empty-word::after{content:attr(data-text);position:absolute;left:0;top:0;width:100%;opacity:0;pointer-events:none;color:#fff}
+.empty-word::before{animation:gA 2.6s infinite steps(1,end)}
+.empty-word::after{color:#666;animation:gB 2.6s infinite steps(1,end)}
+@keyframes gBase{0%,85%,96%,100%{transform:none}86%{transform:translate(-5px,1px) skewX(3deg)}89%{transform:translate(4px,-2px)}92%{transform:translate(-3px,0) skewX(-4deg)}}
+@keyframes gA{0%,84%,96%,100%{opacity:0}85%{opacity:.9;clip-path:inset(6% 0 64% 0);transform:translate(-8px,-3px)}88%{opacity:.9;clip-path:inset(52% 0 12% 0);transform:translate(7px,2px)}91%{opacity:.9;clip-path:inset(28% 0 42% 0);transform:translate(-6px,1px)}94%{opacity:.9;clip-path:inset(72% 0 4% 0);transform:translate(5px,-2px)}}
+@keyframes gB{0%,84%,96%,100%{opacity:0}86%{opacity:.7;clip-path:inset(60% 0 8% 0);transform:translate(8px,3px)}89%{opacity:.7;clip-path:inset(10% 0 66% 0);transform:translate(-7px,-2px)}92%{opacity:.7;clip-path:inset(38% 0 30% 0);transform:translate(6px,-1px)}95%{opacity:.7;clip-path:inset(4% 0 78% 0);transform:translate(-5px,2px)}}
+.empty-templates{width:100%;max-width:650px;margin:14px auto 0;display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.tpl-chip{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.14);border-radius:14px;padding:10px 12px;font-size:12.5px;font-family:inherit;color:rgba(255,255,255,.92);cursor:pointer;white-space:nowrap;transition:background .15s ease,border-color .15s ease}
+.tpl-chip:active{background:rgba(255,255,255,.14)}
+@media (hover:hover){.tpl-chip:hover{background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.25)}}
+.empty-footer{position:absolute;left:0;right:0;bottom:0;display:flex;flex-direction:column;align-items:center;gap:12px;padding:0 16px calc(16px + env(safe-area-inset-bottom,0px));z-index:5;pointer-events:none;transition:opacity .2s ease}
+.empty-footer.kb-hidden{opacity:0}
+.footer-brand{font-family:'Syne',sans-serif;font-weight:700;font-size:14px;letter-spacing:.08em;color:rgba(255,255,255,.6);pointer-events:auto;user-select:none}
+.footer-socials{display:flex;align-items:center;gap:18px;pointer-events:auto}
+.footer-socials a{color:rgba(255,255,255,.45);display:flex;align-items:center;justify-content:center;transition:color .15s ease}
+.footer-socials a:hover,.footer-socials a:active{color:rgba(255,255,255,.9)}
+`;
 
   return (
     <>
       <style>{ibCSS}</style>
       <style>{ibFastCSS}</style>
+      <style>{emptyStateCSS}</style>
       <input type="file" ref={fileRef} multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
       <input type="file" ref={imgRef} accept="image/*" multiple style={{ display: "none" }} onChange={(e) => { pick(e.target.files); e.target.value = ""; }} />
-      <div className="input-wrapper" ref={wrapRef} style={{ bottom: 0 }}>
+      {messages.length === 0 && <div className="empty-bg" />}
+      {messages.length === 0 && (
+        <div className="empty-footer" ref={footerRef}>
+          <div className="footer-brand">Verve</div>
+          <div className="footer-socials">
+            <a href="https://discord.gg/6D2EKEYfC3" target="_blank" rel="noopener noreferrer" aria-label="Discord"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M20.317 4.369a19.791 19.791 0 00-4.885-1.515.074.074 0 00-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 00-5.487 0 12.64 12.64 0 00-.617-1.25.077.077 0 00-.079-.037 19.736 19.736 0 00-4.885 1.515.07.07 0 00-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 00.031.057 19.9 19.9 0 005.993 3.03.078.078 0 00.084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 00-.041-.106 13.107 13.107 0 01-1.872-.892.077.077 0 01-.008-.128c.126-.094.252-.192.372-.291.074-.074.074-.074.077-.01 3.928 1.793 8.18 1.793 12.062 0a.074.074 0 01.078.01c.12.099.246.198.373.292a.077.077 0 01-.006.127 12.299 12.299 0 01-1.873.892.077.077 0 00-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 00.084.028 19.839 19.839 0 006.002-3.03.077.077 0 00.032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 00-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" /></svg></a>
+            <a href="https://www.instagram.com/quixai3?igsi=NTdjem9zOXc4Mjli" target="_blank" rel="noopener noreferrer" aria-label="Instagram"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="2" width="20" height="20" rx="5" /><circle cx="12" cy="12" r="4" /><line x1="17.5" y1="6.5" x2="17.51" y2="6.5" /></svg></a>
+            <a href="https://www.reddit.com/u/Quix-AI/s/1MYhtTvmt8" target="_blank" rel="noopener noreferrer" aria-label="Reddit"><svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0zm5.01 4.744c.688 0 1.25.561 1.25 1.249a1.25 1.25 0 0 1-2.498.056l-2.597-.547-.8 3.747c1.824.07 3.48.632 4.674 1.488.308-.309.73-.491 1.207-.491.968 0 1.754.786 1.754 1.754 0 .716-.435 1.333-1.01 1.614a3.111 3.111 0 0 1 .042.52c0 2.694-3.13 4.87-7.004 4.87-3.874 0-7.004-2.176-7.004-4.87 0-.183.015-.366.043-.534A1.748 1.748 0 0 1 4.028 12c0-.968.786-1.754 1.754-1.754.463 0 .898.196 1.207.49 1.207-.883 2.878-1.43 4.744-1.487l.885-4.182a.342.342 0 0 1 .14-.197.35.35 0 0 1 .238-.042l2.906.617a1.214 1.214 0 0 1 1.108-.701zM9.25 12C8.561 12 8 12.562 8 13.25c0 .687.561 1.248 1.25 1.248.687 0 1.248-.561 1.248-1.249 0-.688-.561-1.249-1.249-1.249zm5.5 0c-.687 0-1.248.561-1.248 1.25 0 .687.561 1.248 1.249 1.248.688 0 1.249-.561 1.249-1.249 0-.687-.562-1.249-1.25-1.249zm-5.466 3.99a.327.327 0 0 0-.231.094.33.33 0 0 0 0 .463c.842.842 2.484.913 2.961.913.477 0 2.105-.056 2.961-.913a.361.361 0 0 0 .029-.463.33.33 0 0 0-.464 0c-.547.533-1.684.73-2.512.73-.828 0-1.979-.196-2.512-.73a.326.326 0 0 0-.232-.095z" /></svg></a>
+            <a href="https://x.com/QuixAI3" target="_blank" rel="noopener noreferrer" aria-label="X"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z" /></svg></a>
+            <a href="mailto:verveofficial@atomicmail.io" aria-label="Email"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="m22 6-10 7L2 6" /></svg></a>
+          </div>
+        </div>
+      )}
+      <div className={`input-wrapper ${messages.length === 0 ? "empty-state" : ""}`} ref={wrapRef} style={{ bottom: messages.length === 0 ? "calc(50vh - 180px)" : 0 }}>
+        {messages.length === 0 && (
+          <div className="empty-word" data-text="QUIX" ref={wordRef}>
+            <span className="letter">Q</span><span className="letter">U</span><span className="letter">I</span><span className="letter">X</span>
+          </div>
+        )}
         <div className={`input-bar ${listening ? "listening" : ""}`}>
           {!isDeepThink && attachments.length > 0 && (<div className="attach-row">{attachments.map((a) => (<div className="attach-chip" key={a.id}>{a.kind === "image" && a.previewUrl ? <img className="attach-thumb" src={a.previewUrl} alt={a.name} /> : null}<span>{a.name}</span><button className="attach-remove" onClick={() => setAttachments((p) => p.filter((x) => x.id !== a.id))}>×</button></div>))}</div>)}
           {listening ? (
@@ -693,6 +961,11 @@ export function ChatInputBar({ onSend, isDeepThink }: { onSend?: (t: string, a: 
             </div>
           </div>
         </div>
+        {messages.length === 0 && (
+          <div className="empty-templates">
+            {EMPTY_TEMPLATES.map((t) => (<button type="button" className="tpl-chip" key={t.label} onClick={() => typeTemplate(t.prompt)}>{t.label}</button>))}
+          </div>
+        )}
       </div>
     </>
   );
