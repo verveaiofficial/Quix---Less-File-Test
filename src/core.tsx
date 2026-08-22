@@ -98,34 +98,93 @@ export const useProfileStore = create<any>((set) => ({
   setProfile: (patch: any) => set((s: any) => { const profile = { ...s.profile, ...patch }; const uid = useAuthStore.getState().session?.user?.id; if (uid) { try { localStorage.setItem(profKey(uid), JSON.stringify(profile)); } catch {} saveProfileToDB(profile); } return { profile }; }),
 }));
 
-/* USAGE — per-account in Supabase; 'usage' = messages LEFT so UI shows left/total */
+/* USAGE — Supabase Backed System */
 export const LIMITS: Record<string, number> = { flash: 30, lite: 50, thinking: 10, deepthink: 1, coder: 10 };
 const FALLBACK: Record<string, string[]> = { flash: ["lite"], lite: ["flash"], thinking: ["flash", "lite"], deepthink: [], coder: ["flash", "lite"] };
 const usageKey = (uid: string | null) => "quix_usage_" + dayKey() + "_" + (uid || "guest");
 function readUsageFor(uid: string | null): Record<string, number> { try { return JSON.parse(localStorage.getItem(usageKey(uid)) || "{}"); } catch { return {}; } }
 function guestLimit(m: string): number { return m === "thinking" ? GUEST_THINKING_LIMIT : 0; }
-function limitForSession(m: string): number { const sess = useAuthStore.getState().session; return sess ? (LIMITS[m] ?? 30) : guestLimit(m); }
-function computeLeft(used: Record<string, number>): Record<string, number> { const out: Record<string, number> = {}; CHAT_MODELS.forEach((m) => { const lim = limitForSession(m); out[m] = lim < 0 ? -1 : Math.max(0, lim - (used[m] ?? 0)); }); return out; }
-async function loadUsageFromDB(uid: string): Promise<Record<string, number> | null> { if (!sb || !uid) return null; try { const { data, error } = await sb.from("usage").select("counts").eq("user_id", uid).eq("day", dayKey()).maybeSingle(); if (error) return null; return data && data.counts ? (data.counts as Record<string, number>) : {}; } catch { return null; } }
-async function saveUsageToDB(uid: string, counts: Record<string, number>) { if (!sb || !uid) return; try { await sb.from("usage").upsert({ user_id: uid, day: dayKey(), counts, updated_at: new Date().toISOString() }, { onConflict: "user_id,day" }); } catch {} }
+
+function computeLeft(used: Record<string, number>, limits: Record<string, number>): Record<string, number> {
+  const out: Record<string, number> = {};
+  CHAT_MODELS.forEach((m) => {
+    const lim = limits[m] ?? LIMITS[m] ?? 30;
+    out[m] = lim < 0 ? -1 : Math.max(0, lim - (used[m] ?? 0));
+  });
+  return out;
+}
+
+async function loadLimitsFromDB(): Promise<Record<string, number> | null> {
+  if (!sb) return null;
+  try {
+    const { data, error } = await sb.from("model_limits").select("model, daily_limit");
+    if (error || !data) return null;
+    const lims: Record<string, number> = {};
+    data.forEach((r: any) => { lims[r.model] = r.daily_limit; });
+    return lims;
+  } catch { return null; }
+}
+
+async function loadUsageFromDB(uid: string): Promise<Record<string, number> | null> {
+  if (!sb || !uid) return null;
+  try {
+    const { data, error } = await sb.from("usage").select("counts").eq("user_id", uid).eq("day", dayKey()).maybeSingle();
+    if (error) return null;
+    return data && data.counts ? (data.counts as Record<string, number>) : {};
+  } catch { return null; }
+}
 
 export const useUsageStore = create<any>((set, get) => ({
   used: readUsageFor(null),
-  usage: computeLeft(readUsageFor(null)),
+  limits: { ...LIMITS },
+  usage: computeLeft(readUsageFor(null), { ...LIMITS }),
   user: null as string | null,
   setUser: (uid: string | null) => {
     const local = readUsageFor(uid);
-    set({ user: uid, used: local, usage: computeLeft(local) });
-    if (uid) { loadUsageFromDB(uid).then((counts) => { if (counts && get().user === uid) set({ used: counts, usage: computeLeft(counts) }); }); }
+    set({ user: uid, used: local, usage: computeLeft(local, get().limits) });
+    if (uid) {
+      loadLimitsFromDB().then((lims) => {
+        if (lims && get().user === uid) {
+          const newLimits = { ...get().limits, ...lims };
+          set({ limits: newLimits });
+          loadUsageFromDB(uid).then((counts) => {
+            if (counts && get().user === uid) {
+              set({ used: counts, usage: computeLeft(counts, newLimits) });
+            }
+          });
+        }
+      }).catch(() => {});
+    }
   },
-  limitFor: (m: string) => limitForSession(m),
-  remaining: (m: string) => { const lim = get().limitFor(m); if (lim < 0) return Infinity; const left = get().usage[m]; return left == null ? lim : left; },
-  consume: (m: string) => {
+  limitFor: (m: string) => {
+    const sess = useAuthStore.getState().session;
+    if (!sess) return guestLimit(m);
+    return get().limits[m] ?? LIMITS[m] ?? 30;
+  },
+  remaining: (m: string) => {
+    const lim = get().limitFor(m);
+    if (lim < 0) return Infinity;
+    const left = get().usage[m];
+    return left == null ? lim : left;
+  },
+  consume: async (m: string) => {
     const uid = get().user;
     const base = { ...get().used };
     const u = { ...base, [m]: (base[m] ?? 0) + 1 };
-    if (uid) { saveUsageToDB(uid, u); } else { try { localStorage.setItem(usageKey(uid), JSON.stringify(u)); } catch {} }
-    set({ used: u, usage: computeLeft(u) });
+    
+    // Optimistically update UI immediately
+    set({ used: u, usage: computeLeft(u, get().limits) });
+
+    if (uid) {
+      // Atomic increment via Postgres RPC
+      try { 
+        await sb.rpc("increment_usage", { model: m }); 
+      } catch (e) { 
+        console.error("increment_usage RPC failed", e); 
+      }
+    } else {
+      try { localStorage.setItem(usageKey(uid), JSON.stringify(u)); } catch {}
+    }
   },
   resolve: (m: string) => {
     if (get().remaining(m) > 0) return m;
