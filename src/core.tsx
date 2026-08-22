@@ -171,16 +171,32 @@ export const useUsageStore = create<any>((set, get) => ({
     const uid = get().user;
     const base = { ...get().used };
     const u = { ...base, [m]: (base[m] ?? 0) + 1 };
-    
+
     // Optimistically update UI immediately
     set({ used: u, usage: computeLeft(u, get().limits) });
 
     if (uid) {
-      // Atomic increment via Postgres RPC
-      try { 
-        await sb.rpc("increment_usage", { model: m }); 
-      } catch (e) { 
-        console.error("increment_usage RPC failed", e); 
+      // Atomic, server-enforced increment via Postgres RPC (SECURITY DEFINER,
+      // row-locked, caps at model_limits.daily_limit, keyed by UTC day).
+      try {
+        const { data, error } = await sb.rpc("increment_usage", { model: m });
+        if (error) throw error;
+        // Reconcile with the authoritative server counts (guards against the
+        // optimistic value drifting from a concurrent login/DB hydration).
+        if (data && get().user === uid) {
+          set((s: any) => {
+            const merged = { ...s.used, ...data };
+            return { used: merged, usage: computeLeft(merged, s.limits) };
+          });
+        }
+      } catch (e) {
+        console.error("increment_usage RPC failed", e);
+        // Roll back the optimistic bump — the DB was never actually touched
+        // (either a network failure or the server-side cap rejected it).
+        set((s: any) => {
+          const rolled = { ...s.used, [m]: Math.max(0, (s.used[m] ?? 1) - 1) };
+          return { used: rolled, usage: computeLeft(rolled, s.limits) };
+        });
       }
     } else {
       try { localStorage.setItem(usageKey(uid), JSON.stringify(u)); } catch {}
