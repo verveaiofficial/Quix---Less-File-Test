@@ -104,6 +104,12 @@ const FALLBACK: Record<string, string[]> = { flash: ["lite"], lite: ["flash"], t
 const usageKey = (uid: string | null) => "quix_usage_" + dayKey() + "_" + (uid || "guest");
 function readUsageFor(uid: string | null): Record<string, number> { try { return JSON.parse(localStorage.getItem(usageKey(uid)) || "{}"); } catch { return {}; } }
 function guestLimit(m: string): number { return m === "thinking" ? GUEST_THINKING_LIMIT : 0; }
+function effectiveLimitsFor(hasSession: boolean, storeLimits: Record<string, number>): Record<string, number> {
+  if (hasSession) return storeLimits;
+  const out: Record<string, number> = {};
+  CHAT_MODELS.forEach((m) => { out[m] = guestLimit(m); });
+  return out;
+}
 
 function computeLeft(used: Record<string, number>, limits: Record<string, number>): Record<string, number> {
   const out: Record<string, number> = {};
@@ -137,11 +143,13 @@ async function loadUsageFromDB(uid: string): Promise<Record<string, number> | nu
 export const useUsageStore = create<any>((set, get) => ({
   used: readUsageFor(null),
   limits: { ...LIMITS },
-  usage: computeLeft(readUsageFor(null), { ...LIMITS }),
+  usage: computeLeft(readUsageFor(null), effectiveLimitsFor(false, LIMITS)),
   user: null as string | null,
   setUser: (uid: string | null) => {
+    const sess = useAuthStore.getState().session;
     const local = readUsageFor(uid);
-    set({ user: uid, used: local, usage: computeLeft(local, get().limits) });
+    const eff = effectiveLimitsFor(!!sess, get().limits);
+    set({ user: uid, used: local, usage: computeLeft(local, eff) });
     if (uid) {
       loadLimitsFromDB().then((lims) => {
         if (lims && get().user === uid) {
@@ -162,18 +170,23 @@ export const useUsageStore = create<any>((set, get) => ({
     return get().limits[m] ?? LIMITS[m] ?? 30;
   },
   remaining: (m: string) => {
+    // Always derive from raw `used` + the correct pool for the current
+    // session state — never trust the cached `usage` snapshot for gating,
+    // since it can lag behind a guest/signed-in transition.
     const lim = get().limitFor(m);
     if (lim < 0) return Infinity;
-    const left = get().usage[m];
-    return left == null ? lim : left;
+    const used = get().used[m] ?? 0;
+    return Math.max(0, lim - used);
   },
   consume: async (m: string) => {
     const uid = get().user;
+    const sess = useAuthStore.getState().session;
+    const eff = effectiveLimitsFor(!!sess, get().limits);
     const base = { ...get().used };
     const u = { ...base, [m]: (base[m] ?? 0) + 1 };
 
     // Optimistically update UI immediately
-    set({ used: u, usage: computeLeft(u, get().limits) });
+    set({ used: u, usage: computeLeft(u, eff) });
 
     if (uid) {
       // Atomic, server-enforced increment via Postgres RPC (SECURITY DEFINER,
